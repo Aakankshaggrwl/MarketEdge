@@ -60,8 +60,6 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
 {"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief",
 "milestones": [{"key":"customer","name":"Customer Analysis","rationale":"1-2 sentences why THIS client needs it, referencing their brief"}]}`;
 
-    console.log("Calling Claude API for SOW generation...");
-    
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1024,
@@ -69,29 +67,23 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
       messages: [{ role: "user", content: prompt }],
     });
 
-    console.log("Full message response:", JSON.stringify(message, null, 2));
-    console.log("Message content array:", message.content);
-    console.log("First content item:", message.content[0]);
-    
-    const text = message.content[0]?.type === "text" ? message.content[0].text : "";
-    
-    console.log("Extracted text:", text);
+    // Find the text block (skip thinking blocks)
+    const textBlock = message.content.find(block => block.type === "text");
+    const text = textBlock?.text || "";
     
     if (!text) {
-      console.error("No text found. Full content structure:", JSON.stringify(message.content));
-      return res.status(500).json({ error: `No text response from Claude. Content: ${JSON.stringify(message.content)}` });
+      console.error("No text block found. Content:", message.content);
+      return res.status(500).json({ error: "No text response from Claude" });
     }
 
     let sow;
     try {
       const clean = text.replace(/```json|```/g, "").trim();
-      console.log("Cleaned text for JSON parsing:", clean);
       sow = JSON.parse(clean);
-      console.log("Successfully parsed SOW:", sow);
     } catch (parseErr) {
       console.error("JSON parse error:", parseErr.message);
       console.error("Raw response text:", text);
-      return res.status(500).json({ error: `Failed to parse JSON: ${parseErr.message} | Raw: ${text.substring(0, 300)}` });
+      return res.status(500).json({ error: `Failed to parse JSON: ${parseErr.message}` });
     }
 
     if (!sow?.milestones?.length) {
@@ -126,8 +118,6 @@ Produce the "${milestoneName}" milestone. Be specific to THIS client — use the
 "recommendations":["3 concrete next actions"],
 "watch_out":"one honest risk or red flag, stated plainly"}`;
 
-    console.log("Calling Claude API for milestone:", milestoneName);
-    
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1400,
@@ -135,29 +125,23 @@ Produce the "${milestoneName}" milestone. Be specific to THIS client — use the
       messages: [{ role: "user", content: prompt }],
     });
 
-    console.log("Full message response:", JSON.stringify(message, null, 2));
-    console.log("Message content array:", message.content);
-    console.log("First content item:", message.content[0]);
-    
-    const text = message.content[0]?.type === "text" ? message.content[0].text : "";
-    
-    console.log("Extracted text:", text);
+    // Find the text block (skip thinking blocks)
+    const textBlock = message.content.find(block => block.type === "text");
+    const text = textBlock?.text || "";
     
     if (!text) {
-      console.error("No text found. Full content structure:", JSON.stringify(message.content));
-      return res.status(500).json({ error: `No text response from Claude. Content: ${JSON.stringify(message.content)}` });
+      console.error("No text block found. Content:", message.content);
+      return res.status(500).json({ error: "No text response from Claude" });
     }
 
     let analysis;
     try {
       const clean = text.replace(/```json|```/g, "").trim();
-      console.log("Cleaned text for JSON parsing:", clean);
       analysis = JSON.parse(clean);
-      console.log("Successfully parsed analysis:", analysis);
     } catch (parseErr) {
       console.error("JSON parse error:", parseErr.message);
       console.error("Raw response text:", text);
-      return res.status(500).json({ error: `Failed to parse JSON: ${parseErr.message} | Raw: ${text.substring(0, 300)}` });
+      return res.status(500).json({ error: `Failed to parse JSON: ${parseErr.message}` });
     }
 
     if (!analysis?.sections?.length) {
