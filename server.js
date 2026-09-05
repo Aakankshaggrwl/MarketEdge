@@ -27,6 +27,34 @@ const MILESTONE_CATALOG = [
   { key: "execbrief", name: "Executive Brief", desc: "The whole strategy on two pages" },
 ];
 
+// Function to safely parse JSON
+function safeParseJSON(text) {
+  try {
+    // Remove markdown code blocks
+    let clean = text.replace(/```json|```/g, "").trim();
+    
+    // Try direct parse first
+    try {
+      return JSON.parse(clean);
+    } catch (e1) {
+      // If that fails, try removing newlines
+      clean = clean.replace(/\n/g, " ").replace(/\r/g, "");
+      try {
+        return JSON.parse(clean);
+      } catch (e2) {
+        // Try to extract JSON object/array
+        const jsonMatch = clean.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+        throw e2;
+      }
+    }
+  } catch (err) {
+    throw new Error(`JSON parsing failed: ${err.message}`);
+  }
+}
+
 // CORS headers
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -56,14 +84,13 @@ Industry: ${industry} | Stage: ${stage} | Target market: ${market} | Primary goa
 Available milestones:
 ${catalog}
 
-Select 4–9 milestones that this specific client needs, in the right order (analysis before strategy before documents). Anchor every rationale in facts from THEIR brief — quote their numbers and constraints. Respond ONLY with JSON (no markdown, no fences):
-{"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief",
-"milestones": [{"key":"customer","name":"Customer Analysis","rationale":"1-2 sentences why THIS client needs it, referencing their brief"}]}`;
+Select 4–9 milestones that this specific client needs, in the right order (analysis before strategy before documents). Anchor every rationale in facts from THEIR brief — quote their numbers and constraints. Respond ONLY with valid JSON (no markdown, no code blocks, no preamble):
+{"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief","milestones": [{"key":"customer","name":"Customer Analysis","rationale":"1-2 sentences why THIS client needs it"}]}`;
 
     const message = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 1024,
-      system: SENIOR_VOICE + ` Respond ONLY with JSON, no markdown fences, no preamble.`,
+      max_tokens: 2000,
+      system: SENIOR_VOICE + ` You must respond ONLY with valid JSON. No markdown. No explanation. No code blocks.`,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -71,29 +98,20 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
     const textBlock = message.content.find(block => block.type === "text");
     const text = textBlock?.text || "";
     
-    if (!text) {
-      console.error("No text block found. Content:", message.content);
-      return res.status(500).json({ error: "No text response from Claude" });
+    if (!text || text.trim().length === 0) {
+      return res.status(500).json({ error: "Empty response from Claude" });
     }
 
-    let sow;
-    try {
-      const clean = text.replace(/```json|```/g, "").trim();
-      sow = JSON.parse(clean);
-    } catch (parseErr) {
-      console.error("JSON parse error:", parseErr.message);
-      console.error("Raw response text:", text);
-      return res.status(500).json({ error: `Failed to parse JSON: ${parseErr.message}` });
-    }
+    // Parse JSON safely
+    const sow = safeParseJSON(text);
 
-    if (!sow?.milestones?.length) {
-      console.error("Generated SOW has no milestones:", sow);
-      return res.status(500).json({ error: "Generated SOW has no milestones" });
+    if (!sow?.milestones || !Array.isArray(sow.milestones) || sow.milestones.length === 0) {
+      return res.status(500).json({ error: "Invalid SOW structure: missing or empty milestones" });
     }
 
     res.status(200).json({ success: true, sow });
   } catch (err) {
-    console.error("SOW generation error:", err);
+    console.error("SOW generation error:", err.message);
     res.status(500).json({ error: err.message || "Failed to generate SOW" });
   }
 });
@@ -112,16 +130,13 @@ app.post('/api/generate-milestone', async (req, res) => {
     const prompt = `Client: "${brief}" (${industry}, ${stage}, market: ${market}, goal: ${goal})
 ${priorContextStr ? priorContextStr + "\n" : ""}
 
-Produce the "${milestoneName}" milestone. Be specific to THIS client — use their numbers, market and constraints. No generic filler. Respond ONLY with JSON (no markdown, no fences):
-{"headline_insight":"the single most important finding, 1-2 sharp sentences",
-"sections":[{"heading":"...","body":"3-5 dense sentences of specific analysis"}] (4 sections),
-"recommendations":["3 concrete next actions"],
-"watch_out":"one honest risk or red flag, stated plainly"}`;
+Produce the "${milestoneName}" milestone. Be specific to THIS client — use their numbers, market and constraints. No generic filler. Respond ONLY with valid JSON (no markdown, no code blocks, no preamble):
+{"headline_insight":"the single most important finding, 1-2 sharp sentences","sections":[{"heading":"Section 1","body":"3-5 dense sentences"},{"heading":"Section 2","body":"3-5 dense sentences"},{"heading":"Section 3","body":"3-5 dense sentences"},{"heading":"Section 4","body":"3-5 dense sentences"}],"recommendations":["Action 1","Action 2","Action 3"],"watch_out":"one honest risk or red flag"}`;
 
     const message = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 1400,
-      system: SENIOR_VOICE + ` Respond ONLY with JSON, no markdown fences, no preamble.`,
+      max_tokens: 2000,
+      system: SENIOR_VOICE + ` You must respond ONLY with valid JSON. No markdown. No explanation. No code blocks.`,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -129,29 +144,24 @@ Produce the "${milestoneName}" milestone. Be specific to THIS client — use the
     const textBlock = message.content.find(block => block.type === "text");
     const text = textBlock?.text || "";
     
-    if (!text) {
-      console.error("No text block found. Content:", message.content);
-      return res.status(500).json({ error: "No text response from Claude" });
+    if (!text || text.trim().length === 0) {
+      return res.status(500).json({ error: "Empty response from Claude" });
     }
 
-    let analysis;
-    try {
-      const clean = text.replace(/```json|```/g, "").trim();
-      analysis = JSON.parse(clean);
-    } catch (parseErr) {
-      console.error("JSON parse error:", parseErr.message);
-      console.error("Raw response text:", text);
-      return res.status(500).json({ error: `Failed to parse JSON: ${parseErr.message}` });
+    // Parse JSON safely
+    const analysis = safeParseJSON(text);
+
+    if (!analysis?.sections || !Array.isArray(analysis.sections) || analysis.sections.length === 0) {
+      return res.status(500).json({ error: "Invalid analysis structure: missing or empty sections" });
     }
 
-    if (!analysis?.sections?.length) {
-      console.error("Generated analysis has no sections:", analysis);
-      return res.status(500).json({ error: "Generated analysis has no sections" });
+    if (!analysis?.recommendations || !Array.isArray(analysis.recommendations)) {
+      return res.status(500).json({ error: "Invalid analysis structure: missing recommendations" });
     }
 
     res.status(200).json({ success: true, analysis });
   } catch (err) {
-    console.error("Milestone generation error:", err);
+    console.error("Milestone generation error:", err.message);
     res.status(500).json({ error: err.message || "Failed to generate milestone" });
   }
 });
