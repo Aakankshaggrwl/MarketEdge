@@ -166,6 +166,45 @@ Produce the "${milestoneName}" milestone. Be specific to THIS client — use the
   }
 });
 
+// Answer questions about SOW
+app.post('/api/ask-sow-question', async (req, res) => {
+  try {
+    const { question, sow } = req.body;
+    
+    if (!question?.trim() || !sow) {
+      return res.status(400).json({ error: "Missing question or SOW" });
+    }
+
+    const milestonesStr = sow.milestones.map(m => `- ${m.name}: ${m.rationale}`).join("\n");
+    
+    const prompt = `You have designed the following scope of work:
+
+Summary: ${sow.engagement_summary}
+
+Milestones:
+${milestonesStr}
+
+A client asks: "${question}"
+
+Answer their question directly and concisely (2-3 sentences max). If their question is about a topic covered in the SOW, mention which milestone(s) will address it. If it's not covered in the current scope, suggest it could be added. Be helpful and specific.`;
+
+    const message = await client.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 300,
+      system: "You are a helpful strategy consultant answering questions about a scope of work. Be concise and specific.",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = message.content.find(block => block.type === "text");
+    const answer = textBlock?.text || "Unable to generate answer";
+
+    res.status(200).json({ success: true, answer });
+  } catch (err) {
+    console.error("Q&A error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to answer question" });
+  }
+});
+
 // Serve static files
 app.use(express.static('public'));
 
