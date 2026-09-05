@@ -60,6 +60,8 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
 {"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief",
 "milestones": [{"key":"customer","name":"Customer Analysis","rationale":"1-2 sentences why THIS client needs it, referencing their brief"}]}`;
 
+    console.log("Calling Claude API for SOW generation...");
+    
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1024,
@@ -67,28 +69,39 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
       messages: [{ role: "user", content: prompt }],
     });
 
+    console.log("Full message response:", JSON.stringify(message, null, 2));
+    console.log("Message content array:", message.content);
+    console.log("First content item:", message.content[0]);
+    
     const text = message.content[0]?.type === "text" ? message.content[0].text : "";
     
+    console.log("Extracted text:", text);
+    
     if (!text) {
-      throw new Error("No text response from Claude");
+      console.error("No text found. Full content structure:", JSON.stringify(message.content));
+      return res.status(500).json({ error: `No text response from Claude. Content: ${JSON.stringify(message.content)}` });
     }
 
     let sow;
     try {
       const clean = text.replace(/```json|```/g, "").trim();
+      console.log("Cleaned text for JSON parsing:", clean);
       sow = JSON.parse(clean);
+      console.log("Successfully parsed SOW:", sow);
     } catch (parseErr) {
-      console.error("JSON parse error. Raw response:", text);
-      throw new Error(`Failed to parse JSON: ${parseErr.message}`);
+      console.error("JSON parse error:", parseErr.message);
+      console.error("Raw response text:", text);
+      return res.status(500).json({ error: `Failed to parse JSON: ${parseErr.message} | Raw: ${text.substring(0, 300)}` });
     }
 
     if (!sow?.milestones?.length) {
-      throw new Error("Generated SOW has no milestones");
+      console.error("Generated SOW has no milestones:", sow);
+      return res.status(500).json({ error: "Generated SOW has no milestones" });
     }
 
     res.status(200).json({ success: true, sow });
   } catch (err) {
-    console.error("SOW generation error:", err.message);
+    console.error("SOW generation error:", err);
     res.status(500).json({ error: err.message || "Failed to generate SOW" });
   }
 });
@@ -113,6 +126,8 @@ Produce the "${milestoneName}" milestone. Be specific to THIS client — use the
 "recommendations":["3 concrete next actions"],
 "watch_out":"one honest risk or red flag, stated plainly"}`;
 
+    console.log("Calling Claude API for milestone:", milestoneName);
+    
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1400,
@@ -120,28 +135,39 @@ Produce the "${milestoneName}" milestone. Be specific to THIS client — use the
       messages: [{ role: "user", content: prompt }],
     });
 
+    console.log("Full message response:", JSON.stringify(message, null, 2));
+    console.log("Message content array:", message.content);
+    console.log("First content item:", message.content[0]);
+    
     const text = message.content[0]?.type === "text" ? message.content[0].text : "";
     
+    console.log("Extracted text:", text);
+    
     if (!text) {
-      throw new Error("No text response from Claude");
+      console.error("No text found. Full content structure:", JSON.stringify(message.content));
+      return res.status(500).json({ error: `No text response from Claude. Content: ${JSON.stringify(message.content)}` });
     }
 
     let analysis;
     try {
       const clean = text.replace(/```json|```/g, "").trim();
+      console.log("Cleaned text for JSON parsing:", clean);
       analysis = JSON.parse(clean);
+      console.log("Successfully parsed analysis:", analysis);
     } catch (parseErr) {
-      console.error("JSON parse error. Raw response:", text);
-      throw new Error(`Failed to parse JSON: ${parseErr.message}`);
+      console.error("JSON parse error:", parseErr.message);
+      console.error("Raw response text:", text);
+      return res.status(500).json({ error: `Failed to parse JSON: ${parseErr.message} | Raw: ${text.substring(0, 300)}` });
     }
 
     if (!analysis?.sections?.length) {
-      throw new Error("Generated analysis has no sections");
+      console.error("Generated analysis has no sections:", analysis);
+      return res.status(500).json({ error: "Generated analysis has no sections" });
     }
 
     res.status(200).json({ success: true, analysis });
   } catch (err) {
-    console.error("Milestone generation error:", err.message);
+    console.error("Milestone generation error:", err);
     res.status(500).json({ error: err.message || "Failed to generate milestone" });
   }
 });
