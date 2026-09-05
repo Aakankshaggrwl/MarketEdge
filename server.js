@@ -27,14 +27,27 @@ const MILESTONE_CATALOG = [
   { key: "execbrief", name: "Executive Brief", desc: "The whole strategy on two pages" },
 ];
 
+// CORS headers
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  next();
+});
+
+app.options('*', (req, res) => res.sendStatus(200));
+
+// Generate SOW
 app.post('/api/generate-sow', async (req, res) => {
   try {
     const { brief, industry, stage, market, goal } = req.body;
+    
     if (!brief?.trim() || !industry || !stage || !market || !goal) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     const catalog = MILESTONE_CATALOG.map(m => `${m.key}: ${m.name} — ${m.desc}`).join("\n");
+    
     const prompt = `A client filled our discovery intake. Design their engagement scope.
 
 CLIENT BRIEF (their own words): "${brief}"
@@ -43,7 +56,7 @@ Industry: ${industry} | Stage: ${stage} | Target market: ${market} | Primary goa
 Available milestones:
 ${catalog}
 
-Select 4–9 milestones that this specific client needs, in the right order (analysis before strategy before documents). Anchor every rationale in facts from THEIR brief — quote their numbers and constraints. Respond ONLY with JSON:
+Select 4–9 milestones that this specific client needs, in the right order (analysis before strategy before documents). Anchor every rationale in facts from THEIR brief — quote their numbers and constraints. Respond ONLY with JSON (no markdown, no fences):
 {"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief",
 "milestones": [{"key":"customer","name":"Customer Analysis","rationale":"1-2 sentences why THIS client needs it, referencing their brief"}]}`;
 
@@ -53,38 +66,48 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
       system: SENIOR_VOICE + ` Respond ONLY with JSON, no markdown fences, no preamble.`,
       messages: [{ role: "user", content: prompt }],
     });
+
     const text = message.content[0]?.type === "text" ? message.content[0].text : "";
+    
+    if (!text) {
+      throw new Error("No text response from Claude");
+    }
+
     let sow;
     try {
       const clean = text.replace(/```json|```/g, "").trim();
       sow = JSON.parse(clean);
-} catch (e) {
-  console.error("JSON parse error:", text);
-  throw new Error("Invalid JSON response from Claude");
-}
+    } catch (parseErr) {
+      console.error("JSON parse error. Raw response:", text);
+      throw new Error(`Failed to parse JSON: ${parseErr.message}`);
+    }
+
     if (!sow?.milestones?.length) {
-      return res.status(400).json({ error: "Failed to generate valid SOW" });
+      throw new Error("Generated SOW has no milestones");
     }
 
     res.status(200).json({ success: true, sow });
   } catch (err) {
-    console.error("SOW generation error:", err);
+    console.error("SOW generation error:", err.message);
     res.status(500).json({ error: err.message || "Failed to generate SOW" });
   }
 });
 
+// Generate Milestone
 app.post('/api/generate-milestone', async (req, res) => {
   try {
     const { brief, industry, stage, market, goal, milestoneName, priorAnalysis } = req.body;
+    
     if (!brief?.trim() || !milestoneName) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     const priorContextStr = priorAnalysis ? `Prior approved milestones:\n${priorAnalysis}` : "";
+    
     const prompt = `Client: "${brief}" (${industry}, ${stage}, market: ${market}, goal: ${goal})
 ${priorContextStr ? priorContextStr + "\n" : ""}
 
-Produce the "${milestoneName}" milestone. Be specific to THIS client — use their numbers, market and constraints. No generic filler. Respond ONLY with JSON:
+Produce the "${milestoneName}" milestone. Be specific to THIS client — use their numbers, market and constraints. No generic filler. Respond ONLY with JSON (no markdown, no fences):
 {"headline_insight":"the single most important finding, 1-2 sharp sentences",
 "sections":[{"heading":"...","body":"3-5 dense sentences of specific analysis"}] (4 sections),
 "recommendations":["3 concrete next actions"],
@@ -93,31 +116,39 @@ Produce the "${milestoneName}" milestone. Be specific to THIS client — use the
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1400,
-      system: SENIOR_VOICE + ` Respond ONLY with JSON, no fences.`,
+      system: SENIOR_VOICE + ` Respond ONLY with JSON, no markdown fences, no preamble.`,
       messages: [{ role: "user", content: prompt }],
     });
 
     const text = message.content[0]?.type === "text" ? message.content[0].text : "";
-    let sow;
+    
+    if (!text) {
+      throw new Error("No text response from Claude");
+    }
+
+    let analysis;
     try {
       const clean = text.replace(/```json|```/g, "").trim();
-      sow = JSON.parse(clean);
-} catch (e) {
-  console.error("JSON parse error:", text);
-  throw new Error("Invalid JSON response from Claude");
-}
+      analysis = JSON.parse(clean);
+    } catch (parseErr) {
+      console.error("JSON parse error. Raw response:", text);
+      throw new Error(`Failed to parse JSON: ${parseErr.message}`);
+    }
+
     if (!analysis?.sections?.length) {
-      return res.status(400).json({ error: "Failed to generate valid analysis" });
+      throw new Error("Generated analysis has no sections");
     }
 
     res.status(200).json({ success: true, analysis });
   } catch (err) {
-    console.error("Milestone generation error:", err);
+    console.error("Milestone generation error:", err.message);
     res.status(500).json({ error: err.message || "Failed to generate milestone" });
   }
 });
 
+// Serve static files
 app.use(express.static('public'));
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
