@@ -4,12 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MarketEdge — AI Strategy Portal</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap');
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', sans-serif; background: #FAF8F3; min-height: 100vh; }
-    code { font-family: monospace; }
-  </style>
 </head>
 <body>
   <div id="root"></div>
@@ -19,65 +13,30 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
-
-    const FONTS = `
-      @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap');
-    `;
+    const { useState, useEffect } = React;
 
     const NAVY = "#102A43";
-    const NAVY_DEEP = "#0B1F33";
     const TEAL = "#0F766E";
-    const TEAL_LIGHT = "#14B8A6";
     const GOLD = "#C9A227";
     const CREAM = "#FAF8F3";
-
-    const MILESTONE_CATALOG = [
-      { key: "customer", name: "Customer Analysis", desc: "Who buys, why they buy, and what they pay for" },
-      { key: "competitor", name: "Competitor Landscape", desc: "Who you compete with and where they are weak" },
-      { key: "gap", name: "Gap & Opportunity Analysis", desc: "Unserved needs your business can own" },
-      { key: "beachhead", name: "Beachhead Selection", desc: "The first segment and market to win" },
-      { key: "entry", name: "Market Entry Strategy", desc: "How and where to launch, in what sequence" },
-      { key: "financial", name: "Financial Analysis", desc: "TAM/SAM/SOM, revenue model, P&L, funding needs" },
-      { key: "bizplan", name: "Business Plan", desc: "The complete operating plan, investor-ready" },
-      { key: "pitch", name: "Pitch Deck", desc: "The investor narrative, slide by slide" },
-      { key: "execbrief", name: "Executive Brief", desc: "The whole strategy on two pages" },
-    ];
 
     const INDUSTRIES = ["SaaS / Software", "Food & Beverage", "Healthcare", "Fintech", "E-commerce / Retail", "Manufacturing", "Education", "Logistics", "Consumer Services", "Other"];
     const STAGES = ["Idea stage", "Pre-revenue / building", "Early revenue (<$100K)", "Growing ($100K–$1M)", "Scaling ($1M+)", "Plateaued / restructuring"];
     const MARKETS = ["India", "Middle East / GCC", "USA", "Europe", "Southeast Asia", "Global", "Not sure yet"];
     const GOALS = ["Validate the idea", "Find my first market", "Enter a new market", "Raise funding", "Restart growth", "Build the full strategy"];
 
-    async function generateSOW(intake) {
-      const res = await fetch('/api/generate-sow', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(intake),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      return data.sow;
-    }
-
-    async function generateMilestone(clientData, milestoneName, priorAnalysis) {
-      const res = await fetch('/api/generate-milestone', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          brief: clientData.brief,
-          industry: clientData.industry,
-          stage: clientData.stage,
-          market: clientData.market,
-          goal: clientData.goal,
-          milestoneName,
-          priorAnalysis: priorAnalysis || null,
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      return data.analysis;
-    }
+    const inputStyle = { 
+      width: "100%", 
+      padding: "12px 14px", 
+      borderRadius: 8, 
+      border: "1.5px solid #D5DBE3", 
+      fontSize: 15, 
+      fontFamily: "Inter", 
+      color: NAVY, 
+      outline: "none", 
+      boxSizing: "border-box", 
+      background: "#fff" 
+    };
 
     function Logo({ light }) {
       return (
@@ -88,19 +47,17 @@
       );
     }
 
-    function Btn({ children, onClick, variant = "primary", disabled, small, style }) {
+    function Btn({ children, onClick, variant = "primary", small, style }) {
       const base = {
-        fontFamily: "Inter", fontWeight: 600, fontSize: small ? 13 : 15, cursor: disabled ? "not-allowed" : "pointer",
-        padding: small ? "8px 16px" : "13px 26px", borderRadius: 8, border: "none", transition: "all .15s", opacity: disabled ? 0.55 : 1,
+        fontFamily: "Inter", fontWeight: 600, fontSize: small ? 13 : 15, cursor: "pointer",
+        padding: small ? "8px 16px" : "13px 26px", borderRadius: 8, border: "none", transition: "all .15s"
       };
       const variants = {
         primary: { background: TEAL, color: "#fff" },
         navy: { background: NAVY, color: "#fff" },
-        gold: { background: GOLD, color: NAVY_DEEP },
-        ghost: { background: "transparent", color: NAVY, border: `1.5px solid ${NAVY}` },
         subtle: { background: "#EEF2F0", color: NAVY },
       };
-      return <button onClick={onClick} disabled={disabled} style={{ ...base, ...variants[variant], ...style }}>{children}</button>;
+      return <button onClick={onClick} style={{ ...base, ...variants[variant], ...style }}>{children}</button>;
     }
 
     function Spinner({ label }) {
@@ -108,7 +65,7 @@
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18, padding: "60px 0" }}>
           <div style={{ width: 44, height: 44, border: `3.5px solid #E2E8F0`, borderTopColor: TEAL, borderRadius: "50%", animation: "spin 0.9s linear infinite" }} />
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-          <div style={{ color: NAVY, fontWeight: 500, fontSize: 15, textAlign: "center", maxWidth: 340 }}>{label}</div>
+          <div style={{ color: NAVY, fontWeight: 500, fontSize: 15, textAlign: "center" }}>{label}</div>
         </div>
       );
     }
@@ -127,205 +84,6 @@
     }
 
     function Select({ label, value, onChange, options }) {
-      const inputStyle = { width: "100%", padding: "12px 14px", borderRadius: 8, border: "1.5px solid #D5DBE3", fontSize: 15, fontFamily: "Inter", color: NAVY, outline: "none", boxSizing: "border-box", background: "#fff" };
       return (
         <div>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: NAVY, marginBottom: 6 }}>{label}</div>
-          <select value={value} onChange={e => onChange(e.target.value)} style={{ ...inputStyle, appearance: "auto" }}>
-            <option value="">Select…</option>
-            {options.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        </div>
-      );
-    }
-
-    function Warn({ children }) {
-      return <div style={{ marginTop: 16, background: "#FEF6E4", borderLeft: `4px solid ${GOLD}`, borderRadius: 6, padding: "12px 16px", fontSize: 14, color: "#6B5310" }}>{children}</div>;
-    }
-
-    function StepHeader({ n, title, sub }) {
-      return (
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: GOLD, letterSpacing: ".08em", marginBottom: 6 }}>STEP {n}</div>
-          <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 24, margin: 0 }}>{title}</h2>
-          {sub && <p style={{ color: "#5A6B7C", fontSize: 14.5, marginTop: 8, lineHeight: 1.65, maxWidth: 680 }}>{sub}</p>}
-        </div>
-      );
-    }
-
-    function LoginView({ onLogin }) {
-      const [email, setEmail] = useState("");
-      const [pw, setPw] = useState("");
-      const [err, setErr] = useState("");
-      const inputStyle = { width: "100%", padding: "12px 14px", borderRadius: 8, border: "1.5px solid #D5DBE3", fontSize: 15, fontFamily: "Inter", color: NAVY, outline: "none", boxSizing: "border-box", background: "#fff" };
-
-      const tryLogin = () => {
-        if (email.trim().toLowerCase() === "demo@marketedge.com" && pw === "Strategy2026") {
-          onLogin({ email, name: "Demo Founder", plan: "pro" });
-        } else {
-          setErr("Invalid credentials. Use demo@marketedge.com / Strategy2026");
-        }
-      };
-
-      return (
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-          <div style={{ flex: "1 1 46%", background: NAVY, color: "#fff", padding: "56px 52px", display: "flex", flexDirection: "column", justifyContent: "space-between", minWidth: 320 }}>
-            <Logo light />
-            <div>
-              <h1 style={{ fontFamily: "Fraunces, serif", fontSize: 40, fontWeight: 600, lineHeight: 1.2, margin: 0 }}>
-                Your strategy consultant.<br />
-                <span style={{ color: GOLD }}>On demand.</span>
-              </h1>
-              <p style={{ fontSize: 16, color: "#B9C6D3", marginTop: 18, lineHeight: 1.7, maxWidth: 420 }}>
-                MarketEdge runs a full consulting engagement — customer intelligence, competitor landscape, market sizing, financials, business plan and pitch deck.
-              </p>
-            </div>
-            <div style={{ fontSize: 13, color: "#7A8CA0" }}>Built on 13+ years of real consulting engagements.</div>
-          </div>
-
-          <div style={{ flex: "1 1 54%", display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
-            <div style={{ width: "100%", maxWidth: 400 }}>
-              <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 28, marginBottom: 26 }}>Sign in</h2>
-              <Field label="Email"><input value={email} onChange={e => { setEmail(e.target.value); setErr(""); }} placeholder="demo@marketedge.com" style={inputStyle} /></Field>
-              <Field label="Password"><input type="password" value={pw} onChange={e => { setPw(e.target.value); setErr(""); }} placeholder="••••••••" style={inputStyle} onKeyDown={e => e.key === "Enter" && tryLogin()} /></Field>
-              {err && <div style={{ color: "#B42318", fontSize: 13.5, marginBottom: 14 }}>{err}</div>}
-              <Btn onClick={tryLogin} style={{ width: "100%" }}>Sign in</Btn>
-              <div style={{ marginTop: 30, background: "#FEF6E4", border: `1px solid ${GOLD}`, borderRadius: 10, padding: "14px 18px", fontSize: 13.5, color: "#6B5310" }}>
-                <strong>Demo access</strong> — email <code style={{ fontWeight: 600 }}>demo@marketedge.com</code>, password <code style={{ fontWeight: 600 }}>Strategy2026</code>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    function IntakeStep({ profile, update }) {
-      const [brief, setBrief] = useState("");
-      const [industry, setIndustry] = useState("");
-      const [stg, setStg] = useState("");
-      const [market, setMarket] = useState("");
-      const [goal, setGoal] = useState("");
-      const [loading, setLoading] = useState(false);
-      const [err, setErr] = useState("");
-      const inputStyle = { width: "100%", padding: "12px 14px", borderRadius: 8, border: "1.5px solid #D5DBE3", fontSize: 15, fontFamily: "Inter", color: NAVY, outline: "none", boxSizing: "border-box", background: "#fff" };
-
-      const generateSOWClick = async () => {
-        if (brief.trim().length < 60) { setErr("Tell us more — at least a few sentences."); return; }
-        if (!industry || !stg || !market || !goal) { setErr("Please answer all four dropdowns."); return; }
-        setErr(""); setLoading(true);
-        const intake = { brief, industry, stage: stg, market, goal };
-        try {
-          const sow = await generateSOW(intake);
-          update({ intake, sow, stage: "sow_review" });
-        } catch (e) {
-          setErr(`Error: ${e.message}`);
-        }
-        setLoading(false);
-      };
-
-      if (loading) return <Card><Spinner label="Generating your scope of work…" /></Card>;
-
-      return (
-        <Card>
-          <StepHeader n={1} title="Tell us everything about your business" sub="Write freely — your idea, your market, your numbers, constraints, and goals." />
-          <textarea value={brief} onChange={e => { setBrief(e.target.value); setErr(""); }} rows={9} placeholder="We're building a compliance-first AI platform for mid-size food manufacturers in Saudi Arabia..." style={{ ...inputStyle, resize: "vertical", lineHeight: 1.65, fontSize: 14.5 }} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginTop: 20 }}>
-            <Select label="Industry" value={industry} onChange={setIndustry} options={INDUSTRIES} />
-            <Select label="Business stage" value={stg} onChange={setStg} options={STAGES} />
-            <Select label="Target market" value={market} onChange={setMarket} options={MARKETS} />
-            <Select label="Primary goal" value={goal} onChange={setGoal} options={GOALS} />
-          </div>
-          {err && <Warn>{err}</Warn>}
-          <div style={{ marginTop: 24 }}><Btn onClick={generateSOWClick}>Generate my scope of work</Btn></div>
-        </Card>
-      );
-    }
-
-    function SOWStep({ profile, update }) {
-      const [feedback, setFeedback] = useState("");
-      const [loading, setLoading] = useState(false);
-      const [err, setErr] = useState("");
-      const sow = profile.sow;
-      const inputStyle = { width: "100%", padding: "12px 14px", borderRadius: 8, border: "1.5px solid #D5DBE3", fontSize: 15, fontFamily: "Inter", color: NAVY, outline: "none", boxSizing: "border-box", background: "#fff" };
-
-      const isApproval = (t) => /^(yes|approved?|looks good|go ahead|confirm(ed)?|ok(ay)?|perfect)\b/i.test(t.trim());
-
-      const submit = () => {
-        if (!feedback.trim()) { setErr("Type 'Yes' to approve, or describe changes."); return; }
-        setErr("");
-        if (isApproval(feedback)) {
-          update({ stage: "milestones", sowFeedback: [...profile.sowFeedback, feedback] });
-        }
-        setFeedback("");
-      };
-
-      return (
-        <Card>
-          <StepHeader n={2} title="Your scope of work" sub="Review and approve, or tell us what to change." />
-          <div style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: "18px 22px", fontSize: 14.5, color: "#25384A", lineHeight: 1.7, marginBottom: 24 }}>
-            {sow.engagement_summary}
-          </div>
-          <div>
-            {sow.milestones.map((m, i) => (
-              <div key={m.key + i} style={{ display: "flex", gap: 18, padding: "16px 0", borderBottom: i < sow.milestones.length - 1 ? "1px solid #EDF1F4" : "none" }}>
-                <div style={{ width: 34, height: 34, borderRadius: "50%", background: NAVY, color: GOLD, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontFamily: "Fraunces, serif", flexShrink: 0 }}>{i + 1}</div>
-                <div>
-                  <div style={{ fontWeight: 600, color: NAVY, fontSize: 15.5 }}>{m.name}</div>
-                  <div style={{ fontSize: 13.5, color: "#5A6B7C", marginTop: 4, lineHeight: 1.6 }}>{m.rationale}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 26 }}>
-            <Field label="Your response">
-              <textarea value={feedback} onChange={e => { setFeedback(e.target.value); setErr(""); }} rows={3} placeholder="Type 'Yes' to approve" style={{ ...inputStyle, resize: "vertical" }} />
-            </Field>
-            {err && <Warn>{err}</Warn>}
-            <Btn onClick={submit}>Submit response</Btn>
-          </div>
-        </Card>
-      );
-    }
-
-    function Dashboard({ user, onLogout }) {
-      return (
-        <div>
-          <div style={{ background: "#fff", borderBottom: "1px solid #E5EAEF", padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Logo />
-            <Btn variant="subtle" small onClick={onLogout}>Sign out</Btn>
-          </div>
-          <div style={{ maxWidth: 980, margin: "0 auto", padding: "44px 32px" }}>
-            <h1 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 32, margin: 0 }}>Welcome to MarketEdge</h1>
-            <p style={{ color: "#5A6B7C", fontSize: 15, marginTop: 8 }}>Your AI strategy consulting platform is ready.</p>
-            <Card style={{ marginTop: 30 }}>
-              <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 24 }}>Start a New Engagement</h2>
-              <p style={{ color: "#5A6B7C", marginTop: 8 }}>Tell us about your business and we'll draft your scope of work.</p>
-              <Btn onClick={() => setView("engagement")} style={{ marginTop: 16 }}>Start Discovery</Btn>
-            </Card>
-          </div>
-        </div>
-      );
-    }
-
-    function App() {
-      const [view, setView] = useState("login");
-      const [user, setUser] = useState(null);
-      const [profile, setProfile] = useState({ stage: "intake", intake: null, sow: null, sowFeedback: [] });
-
-      const updateProfile = (patch) => setProfile({ ...profile, ...patch });
-
-      return (
-        <div style={{ fontFamily: "Inter, sans-serif", minHeight: "100vh", background: CREAM }}>
-          <style>{FONTS}</style>
-          {view === "login" && <LoginView onLogin={(u) => { setUser(u); setView("dashboard"); }} />}
-          {view === "dashboard" && <Dashboard user={user} onLogout={() => { setUser(null); setView("login"); }} />}
-          {view === "engagement" && profile.stage === "intake" && <div style={{ maxWidth: 1060, margin: "0 auto", padding: "36px 32px" }}><IntakeStep profile={profile} update={updateProfile} /></div>}
-          {view === "engagement" && profile.stage === "sow_review" && <div style={{ maxWidth: 1060, margin: "0 auto", padding: "36px 32px" }}><SOWStep profile={profile} update={updateProfile} /></div>}
-        </div>
-      );
-    }
-
-    ReactDOM.render(<App />, document.getElementById('root'));
-  </script>
-</body>
-</html>
+          <div style={{ fontSize: 13.5, fontWeight:
