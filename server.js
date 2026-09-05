@@ -53,10 +53,15 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
       system: SENIOR_VOICE + ` Respond ONLY with JSON, no markdown fences, no preamble.`,
       messages: [{ role: "user", content: prompt }],
     });
-
     const text = message.content[0]?.type === "text" ? message.content[0].text : "";
-    const sow = JSON.parse(text);
-
+    let sow;
+    try {
+      const clean = text.replace(/```json|```/g, "").trim();
+      sow = JSON.parse(clean);
+} catch (e) {
+  console.error("JSON parse error:", text);
+  throw new Error("Invalid JSON response from Claude");
+}
     if (!sow?.milestones?.length) {
       return res.status(400).json({ error: "Failed to generate valid SOW" });
     }
@@ -93,8 +98,14 @@ Produce the "${milestoneName}" milestone. Be specific to THIS client — use the
     });
 
     const text = message.content[0]?.type === "text" ? message.content[0].text : "";
-    const analysis = JSON.parse(text);
-
+    let sow;
+    try {
+      const clean = text.replace(/```json|```/g, "").trim();
+      sow = JSON.parse(clean);
+} catch (e) {
+  console.error("JSON parse error:", text);
+  throw new Error("Invalid JSON response from Claude");
+}
     if (!analysis?.sections?.length) {
       return res.status(400).json({ error: "Failed to generate valid analysis" });
     }
