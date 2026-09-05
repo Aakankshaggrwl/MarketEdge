@@ -30,19 +30,14 @@ const MILESTONE_CATALOG = [
 // Function to safely parse JSON
 function safeParseJSON(text) {
   try {
-    // Remove markdown code blocks
     let clean = text.replace(/```json|```/g, "").trim();
-    
-    // Try direct parse first
     try {
       return JSON.parse(clean);
     } catch (e1) {
-      // If that fails, try removing newlines
       clean = clean.replace(/\n/g, " ").replace(/\r/g, "");
       try {
         return JSON.parse(clean);
       } catch (e2) {
-        // Try to extract JSON object/array
         const jsonMatch = clean.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
         if (jsonMatch) {
           return JSON.parse(jsonMatch[0]);
@@ -65,7 +60,7 @@ app.use((req, res, next) => {
 
 app.options('*', (req, res) => res.sendStatus(200));
 
-// Generate SOW
+// Generate SOW (initial)
 app.post('/api/generate-sow', async (req, res) => {
   try {
     const { brief, industry, stage, market, goal } = req.body;
@@ -84,17 +79,16 @@ Industry: ${industry} | Stage: ${stage} | Target market: ${market} | Primary goa
 Available milestones:
 ${catalog}
 
-Select 4–9 milestones that this specific client needs, in the right order (analysis before strategy before documents). Anchor every rationale in facts from THEIR brief — quote their numbers and constraints. Respond ONLY with valid JSON (no markdown, no code blocks, no preamble):
+Select 4–9 milestones that this specific client needs, in the right order (analysis before strategy before documents). Anchor every rationale in facts from THEIR brief — quote their numbers and constraints. Respond ONLY with valid JSON (no markdown, no fences):
 {"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief","milestones": [{"key":"customer","name":"Customer Analysis","rationale":"1-2 sentences why THIS client needs it"}]}`;
 
     const message = await client.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 2000,
-      system: SENIOR_VOICE + ` You must respond ONLY with valid JSON. No markdown. No explanation. No code blocks.`,
+      system: SENIOR_VOICE + ` Respond ONLY with JSON, no markdown fences, no preamble.`,
       messages: [{ role: "user", content: prompt }],
     });
 
-    // Find the text block (skip thinking blocks)
     const textBlock = message.content.find(block => block.type === "text");
     const text = textBlock?.text || "";
     
@@ -102,7 +96,6 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
       return res.status(500).json({ error: "Empty response from Claude" });
     }
 
-    // Parse JSON safely
     const sow = safeParseJSON(text);
 
     if (!sow?.milestones || !Array.isArray(sow.milestones) || sow.milestones.length === 0) {
@@ -116,92 +109,80 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
   }
 });
 
-// Generate Milestone
-app.post('/api/generate-milestone', async (req, res) => {
+// Unified SOW Management - handles questions and revisions
+app.post('/api/sow-interaction', async (req, res) => {
   try {
-    const { brief, industry, stage, market, goal, milestoneName, priorAnalysis } = req.body;
+    const { userMessage, sow, intake, interactionType } = req.body;
     
-    if (!brief?.trim() || !milestoneName) {
+    if (!userMessage?.trim() || !sow || !intake) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const priorContextStr = priorAnalysis ? `Prior approved milestones:\n${priorAnalysis}` : "";
-    
-    const prompt = `Client: "${brief}" (${industry}, ${stage}, market: ${market}, goal: ${goal})
-${priorContextStr ? priorContextStr + "\n" : ""}
-
-Produce the "${milestoneName}" milestone. Be specific to THIS client — use their numbers, market and constraints. No generic filler. Respond ONLY with valid JSON (no markdown, no code blocks, no preamble):
-{"headline_insight":"the single most important finding, 1-2 sharp sentences","sections":[{"heading":"Section 1","body":"3-5 dense sentences"},{"heading":"Section 2","body":"3-5 dense sentences"},{"heading":"Section 3","body":"3-5 dense sentences"},{"heading":"Section 4","body":"3-5 dense sentences"}],"recommendations":["Action 1","Action 2","Action 3"],"watch_out":"one honest risk or red flag"}`;
-
-    const message = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 2000,
-      system: SENIOR_VOICE + ` You must respond ONLY with valid JSON. No markdown. No explanation. No code blocks.`,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    // Find the text block (skip thinking blocks)
-    const textBlock = message.content.find(block => block.type === "text");
-    const text = textBlock?.text || "";
-    
-    if (!text || text.trim().length === 0) {
-      return res.status(500).json({ error: "Empty response from Claude" });
-    }
-
-    // Parse JSON safely
-    const analysis = safeParseJSON(text);
-
-    if (!analysis?.sections || !Array.isArray(analysis.sections) || analysis.sections.length === 0) {
-      return res.status(500).json({ error: "Invalid analysis structure: missing or empty sections" });
-    }
-
-    if (!analysis?.recommendations || !Array.isArray(analysis.recommendations)) {
-      return res.status(500).json({ error: "Invalid analysis structure: missing recommendations" });
-    }
-
-    res.status(200).json({ success: true, analysis });
-  } catch (err) {
-    console.error("Milestone generation error:", err.message);
-    res.status(500).json({ error: err.message || "Failed to generate milestone" });
-  }
-});
-
-// Answer questions about SOW
-app.post('/api/ask-sow-question', async (req, res) => {
-  try {
-    const { question, sow } = req.body;
-    
-    if (!question?.trim() || !sow) {
-      return res.status(400).json({ error: "Missing question or SOW" });
-    }
-
     const milestonesStr = sow.milestones.map(m => `- ${m.name}: ${m.rationale}`).join("\n");
-    
-    const prompt = `You have designed the following scope of work:
+
+    let prompt, responseType;
+
+    if (interactionType === "question") {
+      responseType = "answer";
+      prompt = `You have designed this scope of work:
 
 Summary: ${sow.engagement_summary}
 
 Milestones:
 ${milestonesStr}
 
-A client asks: "${question}"
+Client question: "${userMessage}"
 
-Answer their question directly and concisely (2-3 sentences max). If their question is about a topic covered in the SOW, mention which milestone(s) will address it. If it's not covered in the current scope, suggest it could be added. Be helpful and specific.`;
+Answer their question concisely (2-3 sentences). If it's about a topic covered in the scope, mention which milestone(s) address it. If not covered, suggest it could be added.`;
+    } else if (interactionType === "revision") {
+      responseType = "revised_sow";
+      const catalog = MILESTONE_CATALOG.map(m => `${m.key}: ${m.name} — ${m.desc}`).join("\n");
+      prompt = `A client filled our discovery intake. Current scope of work:
+
+Summary: ${sow.engagement_summary}
+
+Current milestones:
+${milestonesStr}
+
+Client feedback/request: "${userMessage}"
+
+Make the requested changes. Return ONLY valid JSON (no markdown, no explanation):
+{"engagement_summary": "updated summary if changed, otherwise keep original","milestones": [{"key":"...","name":"...","rationale":"..."}],"changes_made": "Brief description of what changed, or 'None' if only clarification was needed"}`;
+    } else {
+      return res.status(400).json({ error: "Invalid interaction type" });
+    }
 
     const message = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 300,
-      system: "You are a helpful strategy consultant answering questions about a scope of work. Be concise and specific.",
+      max_tokens: 2000,
+      system: SENIOR_VOICE + ` You must respond with ${responseType === "answer" ? "a helpful answer" : "valid JSON only. No markdown. No explanation."}.`,
       messages: [{ role: "user", content: prompt }],
     });
 
     const textBlock = message.content.find(block => block.type === "text");
-    const answer = textBlock?.text || "Unable to generate answer";
+    const text = textBlock?.text || "";
+    
+    if (!text) {
+      return res.status(500).json({ error: "Empty response from Claude" });
+    }
 
-    res.status(200).json({ success: true, answer });
+    if (responseType === "answer") {
+      res.status(200).json({ success: true, type: "answer", response: text });
+    } else {
+      let revisedData;
+      try {
+        let clean = text.replace(/```json|```/g, "").trim();
+        clean = clean.replace(/\n/g, " ").replace(/\r/g, "");
+        revisedData = safeParseJSON(clean);
+      } catch (parseErr) {
+        return res.status(500).json({ error: `Failed to parse revisions: ${parseErr.message}` });
+      }
+
+      res.status(200).json({ success: true, type: "revision", sow: revisedData });
+    }
   } catch (err) {
-    console.error("Q&A error:", err.message);
-    res.status(500).json({ error: err.message || "Failed to answer question" });
+    console.error("SOW interaction error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to process request" });
   }
 });
 
