@@ -48,7 +48,7 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
 "milestones": [{"key":"customer","name":"Customer Analysis","rationale":"1-2 sentences why THIS client needs it, referencing their brief"}]}`;
 
     const message = await client.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-5",
       max_tokens: 1024,
       system: SENIOR_VOICE + ` Respond ONLY with JSON, no markdown fences, no preamble.`,
       messages: [{ role: "user", content: prompt }],
@@ -86,7 +86,7 @@ Produce the "${milestoneName}" milestone. Be specific to THIS client — use the
 "watch_out":"one honest risk or red flag, stated plainly"}`;
 
     const message = await client.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-5",
       max_tokens: 1400,
       system: SENIOR_VOICE + ` Respond ONLY with JSON, no fences.`,
       messages: [{ role: "user", content: prompt }],
