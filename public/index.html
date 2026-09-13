@@ -234,10 +234,14 @@
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState("");
       const [chat, setChat] = useState([]);
-      const [approved, setApproved] = useState(false);
       const sow = profile.sow;
 
       const isApproval = (t) => /^(yes|approved?|looks good|go ahead|confirm|ok|perfect)\b/i.test(t.trim());
+
+      const approveDirectly = () => {
+        setChat([...chat, { type: "user", text: "Yes, approved!" }, { type: "system", text: "✓ Scope of work approved! Ready to proceed to analysis." }]);
+        update({ stage: "milestones", currentMilestoneIndex: 0 });
+      };
 
       const send = async () => {
         if (!message.trim()) { setErr("Please type a message."); return; }
@@ -248,8 +252,7 @@
         // Check if it's approval
         if (isApproval(userMsg)) {
           setChat([...chat, { type: "user", text: userMsg }, { type: "system", text: "✓ Scope of work approved! Ready to proceed to analysis." }]);
-          setApproved(true);
-          setMessage("");
+          update({ stage: "milestones", currentMilestoneIndex: 0 });
           return;
         }
 
@@ -282,10 +285,10 @@
             // Add answer to chat
             setChat([...updatedChat, { type: "assistant", text: data.response }]);
           } else if (data.type === "revision") {
-            // Show what changed and updated milestones
+            // Update SOW and show what changed
             const changesSummary = data.sow.changes_made || "Scope updated";
             const newMilestonesStr = data.sow.milestones.map((m, i) => `${i + 1}. ${m.name}`).join(", ");
-            const assistantMsg = `✓ ${changesSummary}\n\nRevised milestones: ${newMilestonesStr}`;
+            const assistantMsg = `✓ ${changesSummary}\n\nRevised milestones: ${newMilestonesStr}\n\nDoes this look good? Type 'Yes' to approve or describe further changes.`;
             
             setChat([...updatedChat, { type: "assistant", text: assistantMsg }]);
             update({ sow: data.sow, sowFeedback: [...(profile.sowFeedback || []), userMsg] });
@@ -299,7 +302,7 @@
 
       return (
         <Card>
-          <StepHeader n={2} title="Your scope of work" sub="Ask questions, request changes, or type 'Yes' to approve and move to analysis." />
+          <StepHeader n={2} title="Your scope of work" sub="Review it, ask questions, request changes, or approve to proceed." />
           
           {/* Current SOW Summary */}
           <div style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: "18px 22px", fontSize: 14.5, color: "#25384A", lineHeight: 1.7, marginBottom: 24 }}>
@@ -307,7 +310,7 @@
           </div>
 
           {/* Milestones */}
-          <div style={{ marginBottom: 24 }}>
+          <div style={{ marginBottom: 24, paddingBottom: 24, borderBottom: "1px solid #EDF1F4" }}>
             <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Milestones ({sow.milestones.length})</h3>
             {sow.milestones.map((m, i) => (
               <div key={m.key + i} style={{ display: "flex", gap: 12, padding: "10px 0", fontSize: 13.5, color: "#5A6B7C" }}>
@@ -318,7 +321,7 @@
           </div>
 
           {/* Chat History */}
-          <div style={{ marginBottom: 24, borderTop: "1px solid #EDF1F4", paddingTop: 20 }}>
+          <div style={{ marginBottom: 24 }}>
             <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Conversation</h3>
             <div style={{ background: "#FAFBFC", borderRadius: 10, padding: 16, minHeight: 120, maxHeight: 300, overflowY: "auto", marginBottom: 16 }}>
               {chat.length === 0 ? (
@@ -345,41 +348,41 @@
             </div>
           </div>
 
-          {/* Input */}
-          {!approved && (
-            <div style={{ marginTop: 20 }}>
-              <Field label="">
-                <textarea 
-                  value={message} 
-                  onChange={e => { setMessage(e.target.value); setErr(""); }} 
-                  rows={3} 
-                  placeholder="Ask: 'Where will pricing strategy be covered?' or Revise: 'Add financial analysis, drop pitch deck' or Approve: 'Yes'" 
-                  style={{ ...inputStyle, resize: "vertical" }} 
-                  disabled={loading}
-                />
-              </Field>
-              {err && <Warn>{err}</Warn>}
-              <Btn onClick={send} disabled={loading}>{loading ? "Processing..." : "Send"}</Btn>
-              {profile.sowFeedback && profile.sowFeedback.length > 0 && (
-                <div style={{ marginTop: 12, fontSize: 12.5, color: "#8A94A6" }}>
-                  {profile.sowFeedback.length} revision{profile.sowFeedback.length !== 1 ? "s" : ""} applied
-                </div>
-              )}
-            </div>
-          )}
+          {/* Input Section */}
+          <div style={{ marginBottom: 24, borderTop: "1px solid #EDF1F4", paddingTop: 20 }}>
+            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Ask or Revise</h3>
+            <Field label="">
+              <textarea 
+                value={message} 
+                onChange={e => { setMessage(e.target.value); setErr(""); }} 
+                rows={3} 
+                placeholder="Ask: 'Where will pricing strategy be covered?' or Revise: 'Add financial analysis, drop pitch deck' or Approve: 'Yes'" 
+                style={{ ...inputStyle, resize: "vertical" }} 
+                disabled={loading}
+              />
+            </Field>
+            {err && <Warn>{err}</Warn>}
+            <Btn onClick={send} disabled={loading}>{loading ? "Processing..." : "Send"}</Btn>
+            {profile.sowFeedback && profile.sowFeedback.length > 0 && (
+              <div style={{ marginTop: 12, fontSize: 12.5, color: "#8A94A6" }}>
+                {profile.sowFeedback.length} revision{profile.sowFeedback.length !== 1 ? "s" : ""} applied
+              </div>
+            )}
+          </div>
 
-          {/* Approval Button */}
-          {approved && (
-            <div style={{ marginTop: 24, textAlign: "center" }}>
-              <Good>✓ Scope approved!</Good>
-              <Btn 
-                onClick={() => update({ stage: "milestones", currentMilestoneIndex: 0 })}
-                style={{ marginTop: 20 }}
-              >
-                Proceed to Milestone Analysis
-              </Btn>
-            </div>
-          )}
+          {/* Approval Button - Always Visible */}
+          <div style={{ borderTop: "1px solid #EDF1F4", paddingTop: 20 }}>
+            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Ready to Proceed?</h3>
+            <Btn 
+              onClick={approveDirectly}
+              style={{ width: "100%" }}
+            >
+              ✓ Approve Scope & Move to Analysis
+            </Btn>
+            <p style={{ fontSize: 13, color: "#8A94A6", marginTop: 10, textAlign: "center" }}>
+              Or continue refining above by asking questions or requesting changes
+            </p>
+          </div>
         </Card>
       );
     }
@@ -403,7 +406,7 @@
           </div>
 
           <div style={{ marginBottom: 24 }}>
-            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Remaining Milestones</h3>
+            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Engagement Progress</h3>
             {sow.milestones.map((m, i) => (
               <div key={m.key + i} style={{ 
                 display: "flex", 
@@ -414,7 +417,7 @@
                 fontWeight: i === currentIndex ? 600 : 400,
                 opacity: i <= currentIndex ? 1 : 0.6
               }}>
-                <span style={{ minWidth: 24 }}>{i === currentIndex ? "→" : "✓"}</span>
+                <span style={{ minWidth: 24 }}>{i === currentIndex ? "→" : i < currentIndex ? "✓" : "○"}</span>
                 <span>{m.name}</span>
               </div>
             ))}
