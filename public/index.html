@@ -568,7 +568,7 @@
       );
     }
 
-    function MilestoneStep({ profile, update }) {
+        function MilestoneStep({ profile, update }) {
       const sow = profile.sow;
       const currentIndex = profile.currentMilestoneIndex || 0;
       const currentMilestone = sow.milestones[currentIndex];
@@ -605,15 +605,49 @@
 
       const downloadPDF = () => {
         if (!report) return;
-        const element = document.getElementById('report-content');
+        const element = document.getElementById('full-report-pdf');
         const opt = {
-          margin: 10,
-          filename: `${report.title}.pdf`,
+          margin: [15, 15, 20, 15],
+          filename: `MarketEdge-${report.title}-Full-Report.pdf`,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2 },
+          html2canvas: { scale: 2, useCORS: true },
           jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
         };
         html2pdf().set(opt).from(element).save();
+      };
+
+      const printReport = () => {
+        const element = document.getElementById('full-report-pdf');
+        const printWindow = window.open('', '', 'width=900,height=1200');
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              * { margin: 0; padding: 0; }
+              body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; line-height: 1.6; color: #333; }
+              .page { page-break-after: always; padding: 40px 30px; }
+              h1 { font-size: 28px; margin-bottom: 20px; color: #102A43; }
+              h2 { font-size: 18px; margin-top: 30px; margin-bottom: 15px; color: #102A43; border-bottom: 2px solid #102A43; padding-bottom: 10px; }
+              h3 { font-size: 16px; margin-top: 20px; margin-bottom: 10px; color: #0F766E; }
+              p { margin-bottom: 12px; text-align: justify; }
+              ul { margin-left: 20px; margin-bottom: 15px; }
+              li { margin-bottom: 8px; }
+              .header { text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #102A43; }
+              .logo { font-size: 24px; margin-bottom: 20px; }
+              .footer { text-align: center; font-size: 11px; color: #999; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; }
+              .toc { margin-bottom: 40px; }
+              .toc-item { margin-bottom: 8px; padding-left: 20px; }
+            </style>
+          </head>
+          <body>
+            ${element.innerHTML}
+          </body>
+          </html>
+        `);
+        printWindow.document.close();
+        setTimeout(() => printWindow.print(), 250);
       };
 
       return (
@@ -624,54 +658,159 @@
             sub={`Milestone ${currentIndex + 1} of ${totalMilestones}`}
           />
           
-          {loading && <Spinner label="Generating analysis report…" />}
+          {loading && <Spinner label="Generating comprehensive analysis report…" />}
 
           {report && !loading && (
-            <div id="report-content" style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: 24, marginBottom: 24 }}>
-              <div style={{ marginBottom: 20, borderBottom: "2px solid #DCE7E4", paddingBottom: 20 }}>
-                <Logo />
-              </div>
-              <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 22, marginBottom: 16 }}>{report.title}</h2>
-              
-              <div style={{ marginBottom: 24 }}>
-                <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 10 }}>Executive Summary</h4>
-                <p style={{ color: "#5A6B7C", lineHeight: 1.7 }}>{report.executive_summary}</p>
+            <>
+              {/* Snapshot Label */}
+              <div style={{ background: "#FEF6E4", border: `2px solid ${GOLD}`, borderRadius: 10, padding: 16, marginBottom: 24 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: GOLD, marginBottom: 8 }}>📄 SNAPSHOT OF {report.title.toUpperCase()} REPORT</div>
+                <p style={{ fontSize: 13, color: "#6B5310", margin: 0 }}>This is a preview of the complete analysis. Download the full professional report (15-20+ pages) below for comprehensive details, strategic recommendations, and detailed implementation guidance.</p>
               </div>
 
-              <div style={{ marginBottom: 24 }}>
-                <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 10 }}>Key Findings</h4>
-                <ul style={{ color: "#5A6B7C", paddingLeft: 20, lineHeight: 1.8 }}>
-                  {report.findings.map((f, i) => <li key={i}>{f}</li>)}
-                </ul>
+              {/* Full PDF Report (Hidden) */}
+              <div id="full-report-pdf" style={{ display: "none", background: "#fff", color: "#333" }}>
+                {/* Create multiple pages with header/footer */}
+                {report.sections && report.sections.map((section, pageIndex) => (
+                  <div key={pageIndex} style={{ pageBreakAfter: "always", padding: "40px 30px", position: "relative" }}>
+                    {/* Header with Logo on each page */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30, paddingBottom: 15, borderBottom: "1px solid #ddd", fontSize: 11, color: "#999" }}>
+                      <div>
+                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#102A43" }}>Market</span>
+                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#C9A227" }}>Edge</span>
+                      </div>
+                      <div>{report.title}</div>
+                      <div>Page {pageIndex + 1}</div>
+                    </div>
+
+                    {/* Page Content */}
+                    {pageIndex === 0 && (
+                      <>
+                        <div style={{ textAlign: "center", marginBottom: 60 }}>
+                          <div style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 32, color: "#102A43", marginBottom: 10 }}>{report.title}</div>
+                          <div style={{ fontSize: 16, color: "#0F766E", marginBottom: 5 }}>Strategic Analysis Report</div>
+                          <div style={{ fontSize: 12, color: "#999", marginTop: 20 }}>Generated by MarketEdge</div>
+                          <div style={{ fontSize: 12, color: "#999" }}>{ new Date().toLocaleDateString()}</div>
+                        </div>
+                        
+                        {section.heading && (
+                          <>
+                            <div style={{ fontSize: 18, fontWeight: 600, color: "#102A43", marginBottom: 15, borderBottom: "2px solid #102A43", paddingBottom: 10 }}>
+                              {section.heading}
+                            </div>
+                            <div style={{ fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", color: "#333" }}>
+                              {section.content}
+                            </div>
+                          </>
+                        )}
+                      </>
+                    )}
+
+                    {pageIndex > 0 && (
+                      <>
+                        {section.heading && (
+                          <div style={{ fontSize: 18, fontWeight: 600, color: "#102A43", marginBottom: 15, borderBottom: "2px solid #102A43", paddingBottom: 10 }}>
+                            {section.heading}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", color: "#333" }}>
+                          {section.content}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Footer on each page */}
+                    <div style={{ marginTop: 50, paddingTop: 15, borderTop: "1px solid #ddd", fontSize: 10, color: "#999", textAlign: "center" }}>
+                      <div>MarketEdge Strategic Analysis Report</div>
+                      <div style={{ marginTop: 5 }}>Confidential - For internal use only</div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Recommendations Page */}
+                {report.recommendations && report.recommendations.length > 0 && (
+                  <div style={{ pageBreakAfter: "always", padding: "40px 30px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30, paddingBottom: 15, borderBottom: "1px solid #ddd", fontSize: 11, color: "#999" }}>
+                      <div>
+                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#102A43" }}>Market</span>
+                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#C9A227" }}>Edge</span>
+                      </div>
+                      <div>{report.title}</div>
+                      <div>Page {(report.sections?.length || 0) + 1}</div>
+                    </div>
+
+                    <div style={{ fontSize: 18, fontWeight: 600, color: "#102A43", marginBottom: 15, borderBottom: "2px solid #102A43", paddingBottom: 10 }}>
+                      Strategic Recommendations
+                    </div>
+                    <ul style={{ paddingLeft: 20, color: "#333", fontSize: 13, lineHeight: 1.8 }}>
+                      {report.recommendations.map((r, i) => (
+                        <li key={i} style={{ marginBottom: 12 }}>{r}</li>
+                      ))}
+                    </ul>
+
+                    <div style={{ marginTop: 50, paddingTop: 15, borderTop: "1px solid #ddd", fontSize: 10, color: "#999", textAlign: "center" }}>
+                      <div>MarketEdge Strategic Analysis Report</div>
+                      <div style={{ marginTop: 5 }}>Confidential - For internal use only</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Success Metrics Page */}
+                {report.metrics && report.metrics.length > 0 && (
+                  <div style={{ padding: "40px 30px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30, paddingBottom: 15, borderBottom: "1px solid #ddd", fontSize: 11, color: "#999" }}>
+                      <div>
+                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#102A43" }}>Market</span>
+                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#C9A227" }}>Edge</span>
+                      </div>
+                      <div>{report.title}</div>
+                      <div>Page {(report.sections?.length || 0) + 2}</div>
+                    </div>
+
+                    <div style={{ fontSize: 18, fontWeight: 600, color: "#102A43", marginBottom: 15, borderBottom: "2px solid #102A43", paddingBottom: 10 }}>
+                      Success Metrics & KPIs
+                    </div>
+                    <ul style={{ paddingLeft: 20, color: "#333", fontSize: 13, lineHeight: 1.8 }}>
+                      {report.metrics.map((m, i) => (
+                        <li key={i} style={{ marginBottom: 12 }}>{m}</li>
+                      ))}
+                    </ul>
+
+                    <div style={{ marginTop: 50, paddingTop: 15, borderTop: "1px solid #ddd", fontSize: 10, color: "#999", textAlign: "center" }}>
+                      <div>MarketEdge Strategic Analysis Report</div>
+                      <div style={{ marginTop: 5 }}>Confidential - For internal use only</div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div style={{ marginBottom: 24 }}>
-                <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 10 }}>Recommendations</h4>
-                <ul style={{ color: "#5A6B7C", paddingLeft: 20, lineHeight: 1.8 }}>
-                  {report.recommendations.map((r, i) => <li key={i}>{r}</li>)}
-                </ul>
+              {/* Snapshot Preview (On Screen) */}
+              <div style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: 24, marginBottom: 24 }}>
+                <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 18, marginBottom: 16 }}>Report Snapshot Preview</h3>
+                
+                {report.sections && report.sections.slice(0, 3).map((section, i) => (
+                  <div key={i} style={{ marginBottom: 20 }}>
+                    <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 14, marginBottom: 10, borderBottom: "1px solid #DCE7E4", paddingBottom: 6 }}>{section.heading}</h4>
+                    <p style={{ color: "#5A6B7C", lineHeight: 1.6, fontSize: 13, marginBottom: 0 }}>
+                      {section.content.substring(0, 300).replace(/\n/g, " ")}...
+                    </p>
+                  </div>
+                ))}
               </div>
 
-              <div>
-                <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 10 }}>Success Metrics</h4>
-                <ul style={{ color: "#5A6B7C", paddingLeft: 20, lineHeight: 1.8 }}>
-                  {report.metrics.map((m, i) => <li key={i}>{m}</li>)}
-                </ul>
+              {/* Download & Print Buttons */}
+              <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+                <Btn onClick={downloadPDF}>📥 Download Full Report (PDF)</Btn>
+                <Btn variant="subtle" onClick={printReport}>🖨 Print Full Report</Btn>
               </div>
-            </div>
-          )}
-
-          {report && !loading && (
-            <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
-              <Btn onClick={downloadPDF}>📥 Download PDF</Btn>
-              <Btn variant="subtle" onClick={() => window.print()}>🖨 Print</Btn>
-            </div>
+            </>
           )}
 
           {err && <Warn>{err}</Warn>}
 
-          <div style={{ marginBottom: 24 }}>
-            <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 14, marginBottom: 12 }}>Progress</h4>
+          {/* Progress */}
+          <div style={{ marginBottom: 24, borderTop: "1px solid #EDF1F4", paddingTop: 20 }}>
+            <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 14, marginBottom: 12 }}>Engagement Progress</h4>
             {sow.milestones.map((m, i) => (
               <div key={m.key + i} style={{ 
                 display: "flex", 
@@ -687,6 +826,7 @@
             ))}
           </div>
 
+          {/* Navigation */}
           <div style={{ display: "flex", gap: 12 }}>
             {currentIndex > 0 && (
               <Btn 
