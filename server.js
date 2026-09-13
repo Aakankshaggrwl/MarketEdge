@@ -206,5 +206,52 @@ app.get('/', (req, res) => {
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+// Generate milestone report
+app.post('/api/generate-milestone-report', async (req, res) => {
+  try {
+    const { milestoneKey, milestoneName, sow, intake } = req.body;
+    
+    if (!milestoneKey || !milestoneName || !sow || !intake) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
 
+    const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
+    
+    const prompt = `You are a senior strategy consultant. Generate a detailed analysis report for the "${milestoneName}" milestone.
+
+Client context: ${briefContext}
+
+Scope summary: ${sow.engagement_summary}
+
+Create a professional, data-driven report with these sections:
+1. Executive Summary (2-3 sentences)
+2. Key Findings (4-5 bullet points)
+3. Recommendations (3-4 action items)
+4. Success Metrics (3-4 KPIs to track)
+
+Write in first person ("we found", "we recommend"). Be specific and actionable. Return as JSON:
+{"title":"${milestoneName}","executive_summary":"...","findings":["..."],"recommendations":["..."],"metrics":["..."]}`;
+
+    const message = await client.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 3000,
+      system: SENIOR_VOICE + ` Respond ONLY with valid JSON, no markdown.`,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = message.content.find(block => block.type === "text");
+    const text = textBlock?.text || "";
+    
+    if (!text) {
+      return res.status(500).json({ error: "Empty response from Claude" });
+    }
+
+    const report = safeParseJSON(text);
+    res.status(200).json({ success: true, report });
+  } catch (err) {
+    console.error("Report generation error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to generate report" });
+  }
+});
 export default app;
+
