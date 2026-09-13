@@ -37,24 +37,35 @@ function safeParseJSON(text) {
     try {
       return JSON.parse(clean);
     } catch (e1) {
-      // Second attempt: remove problematic whitespace but preserve structure
-      clean = clean.replace(/[\r\n]/g, " ");
+      // Second attempt: normalize whitespace
+      clean = clean.replace(/[\r\n]/g, " ").replace(/\s+/g, " ");
       try {
         return JSON.parse(clean);
       } catch (e2) {
-        // Third attempt: find and extract JSON object/array
-        const jsonMatch = clean.match(/\{[\s\S]*\}(?=\s*$)/) || clean.match(/\[[\s\S]*\](?=\s*$)/);
-        if (jsonMatch) {
-          try {
-            return JSON.parse(jsonMatch[0]);
-          } catch (e3) {
-            throw new Error(`Extracted JSON still invalid: ${e3.message}`);
+        // Third attempt: fix common quote escaping issues
+        clean = clean.replace(/([^\\])"/g, '$1\\"').replace(/^"/, '\\"');
+        try {
+          return JSON.parse(clean);
+        } catch (e3) {
+          // Fourth attempt: extract JSON object more carefully
+          const match = clean.match(/\{[\s\S]*\}(?=\s*$)/);
+          if (match) {
+            try {
+              return JSON.parse(match[0]);
+            } catch (e4) {
+              // Last resort: try to find valid JSON by removing problematic content
+              let jsonStr = match[0];
+              // Fix unclosed strings
+              jsonStr = jsonStr.replace(/: "([^"]*$)/g, ': ""');
+              return JSON.parse(jsonStr);
+            }
           }
+          throw e2;
         }
-        throw e2;
       }
     }
   } catch (err) {
+    console.error("JSON content preview:", text.substring(0, 500));
     throw new Error(`JSON parsing failed: ${err.message}`);
   }
 }
