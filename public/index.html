@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MarketEdge — AI Strategy Portal</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -13,14 +14,20 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
   <script type="text/babel">
-    const { useState } = React;
+    const { useState, useEffect } = React;
 
     const NAVY = "#102A43";
     const TEAL = "#0F766E";
     const GOLD = "#C9A227";
     const CREAM = "#FAF8F3";
 
-    const INDUSTRIES = ["SaaS / Software", "Food & Beverage", "Healthcare", "Fintech", "E-commerce / Retail", "Manufacturing", "Education", "Logistics", "Consumer Services", "Other"];
+    const INDUSTRIES = [
+      "SaaS / Software", "Food & Beverage", "Healthcare", "Fintech", "E-commerce / Retail", 
+      "Manufacturing", "Education", "Logistics", "Consumer Services", "Banking", 
+      "Professional Services", "Technology", "Fashion", "Apparel", "Media", "Advertising",
+      "Real Estate", "Travel & Hospitality", "Energy", "Telecommunications", "Automotive",
+      "Pharma / Biotech", "Agriculture", "Consulting", "Legal Services", "Other"
+    ];
     const STAGES = ["Idea stage", "Pre-revenue / building", "Early revenue (<$100K)", "Growing ($100K–$1M)", "Scaling ($1M+)", "Plateaued / restructuring"];
     const MARKETS = ["India", "Middle East / GCC", "USA", "Europe", "Southeast Asia", "Global", "Not sure yet"];
     const GOALS = ["Validate the idea", "Find my first market", "Enter a new market", "Raise funding", "Restart growth", "Build the full strategy"];
@@ -36,6 +43,14 @@
       outline: "none", 
       boxSizing: "border-box", 
       background: "#fff" 
+    };
+
+    // localStorage helpers
+    const storage = {
+      getProfiles: () => JSON.parse(localStorage.getItem('marketedge_profiles') || '{"businesses":[]}'),
+      saveProfiles: (data) => localStorage.setItem('marketedge_profiles', JSON.stringify(data)),
+      getCurrentBusinessId: () => localStorage.getItem('marketedge_currentBusinessId'),
+      setCurrentBusinessId: (id) => localStorage.setItem('marketedge_currentBusinessId', id),
     };
 
     function Logo({ light }) {
@@ -56,6 +71,7 @@
         primary: { background: TEAL, color: "#fff" },
         navy: { background: NAVY, color: "#fff" },
         subtle: { background: "#EEF2F0", color: NAVY },
+        success: { background: "#16A34A", color: "#fff" },
       };
       return <button onClick={onClick} style={{ ...base, ...variants[variant], ...style }} disabled={disabled}>{children}</button>;
     }
@@ -79,6 +95,41 @@
         <div style={{ marginBottom: 16 }}>
           {label && <div style={{ fontSize: 13.5, fontWeight: 600, color: NAVY, marginBottom: 6 }}>{label}</div>}
           {children}
+        </div>
+      );
+    }
+
+    function ComboSelect({ label, value, onChange, options }) {
+      const [open, setOpen] = useState(false);
+      const filtered = options.filter(o => o.toLowerCase().includes(value.toLowerCase()));
+
+      return (
+        <div style={{ position: "relative" }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: NAVY, marginBottom: 6 }}>{label}</div>
+          <input 
+            type="text"
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 200)}
+            placeholder="Type or select…"
+            style={{ ...inputStyle, position: "relative", zIndex: 10 }}
+          />
+          {open && filtered.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #D5DBE3", borderTop: "none", borderRadius: "0 0 8 8", maxHeight: 200, overflowY: "auto", zIndex: 20 }}>
+              {filtered.map(opt => (
+                <div 
+                  key={opt}
+                  onClick={() => { onChange(opt); setOpen(false); }}
+                  style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #EDF1F4", fontSize: 14, color: NAVY }}
+                  onMouseEnter={e => e.target.style.background = "#F7FAF9"}
+                  onMouseLeave={e => e.target.style.background = "#fff"}
+                >
+                  {opt}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       );
     }
@@ -162,7 +213,41 @@
       );
     }
 
-    function DashboardView({ user, onStartEngagement, onLogout }) {
+    function BusinessSelectorView({ user, onSelectBusiness, onLogout }) {
+      const [businesses, setBusinesses] = useState([]);
+      const [newName, setNewName] = useState("");
+
+      useEffect(() => {
+        const data = storage.getProfiles();
+        setBusinesses(data.businesses);
+      }, []);
+
+      const addBusiness = () => {
+        if (!newName.trim() || businesses.length >= 2) return;
+        const newBusiness = {
+          id: Date.now().toString(),
+          name: newName,
+          createdAt: new Date().toISOString(),
+          stage: "intake",
+          intake: null,
+          sow: null,
+          milestones: [],
+          sowFeedback: [],
+          currentMilestoneIndex: 0,
+        };
+        const updated = { businesses: [...businesses, newBusiness] };
+        storage.saveProfiles(updated);
+        storage.setCurrentBusinessId(newBusiness.id);
+        setBusinesses([...businesses, newBusiness]);
+        setNewName("");
+      };
+
+      const selectBusiness = (id) => {
+        storage.setCurrentBusinessId(id);
+        const business = businesses.find(b => b.id === id);
+        onSelectBusiness(business);
+      };
+
       return (
         <div>
           <div style={{ background: "#fff", borderBottom: "1px solid #E5EAEF", padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -170,26 +255,129 @@
             <Btn variant="subtle" small onClick={onLogout}>Sign out</Btn>
           </div>
           <div style={{ maxWidth: 980, margin: "0 auto", padding: "44px 32px" }}>
-            <h1 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 32, margin: 0 }}>Welcome, {user.name}</h1>
-            <p style={{ color: "#5A6B7C", fontSize: 15, marginTop: 8 }}>Your AI strategy consulting platform is ready.</p>
-            <Card style={{ marginTop: 30 }}>
-              <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 24, marginTop: 0 }}>Start a New Engagement</h2>
-              <p style={{ color: "#5A6B7C", marginTop: 8 }}>Tell us about your business and we'll draft your scope of work.</p>
-              <Btn onClick={onStartEngagement} style={{ marginTop: 16 }}>Start Discovery</Btn>
-            </Card>
+            <h1 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 32, margin: 0 }}>Your Business Ideas</h1>
+            <p style={{ color: "#5A6B7C", fontSize: 15, marginTop: 8, marginBottom: 32 }}>Work on up to 2 business ideas. All progress is saved automatically.</p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24 }}>
+              {businesses.map(b => (
+                <div key={b.id} style={{ background: "#F7FAF9", border: "1.5px solid #DCE7E4", borderRadius: 12, padding: 24 }}>
+                  <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 18, margin: "0 0 12px 0" }}>{b.name}</h3>
+                  <div style={{ fontSize: 13, color: "#8A94A6", marginBottom: 16 }}>
+                    Status: <strong>{b.stage === "intake" ? "Intake" : b.stage === "sow_review" ? "SOW Review" : b.stage === "milestones" ? "In Analysis" : "Complete"}</strong>
+                  </div>
+                  <Btn onClick={() => selectBusiness(b.id)} style={{ width: "100%" }}>Open</Btn>
+                </div>
+              ))}
+
+              {businesses.length < 2 && (
+                <Card style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: 200 }}>
+                  <input 
+                    type="text"
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                    placeholder="Business name"
+                    style={{ ...inputStyle, marginBottom: 12 }}
+                    onKeyDown={e => e.key === "Enter" && addBusiness()}
+                  />
+                  <Btn onClick={addBusiness} disabled={!newName.trim()}>+ Add Business</Btn>
+                </Card>
+              )}
+            </div>
           </div>
         </div>
       );
     }
 
+    function ProgressSidebar({ stage, sow, currentMilestoneIndex, onStepClick }) {
+      const steps = [
+        { id: "intake", label: "Intake", completed: stage !== "intake" },
+        { id: "sow_review", label: "Scope of Work", completed: stage !== "intake" && stage !== "sow_review" },
+      ];
+
+      if (sow?.milestones) {
+        sow.milestones.forEach((m, i) => {
+          steps.push({
+            id: `milestone-${i}`,
+            label: m.name,
+            completed: stage === "complete" || (stage === "milestones" && currentMilestoneIndex > i),
+            indent: true
+          });
+        });
+      }
+
+      return (
+        <div style={{ width: 280, background: "#F7FAF9", borderRight: "1px solid #DCE7E4", padding: 24, overflowY: "auto", maxHeight: "100vh" }}>
+          <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 14, marginBottom: 20 }}>Project Progress</h3>
+          {steps.map(step => (
+            <div
+              key={step.id}
+              onClick={() => onStepClick(step.id)}
+              style={{
+                padding: "12px 14px",
+                marginBottom: 8,
+                borderRadius: 8,
+                background: step.completed ? "#EAF6EC" : "#fff",
+                border: `1.5px solid ${step.completed ? "#16A34A" : "#D5DBE3"}`,
+                cursor: "pointer",
+                fontSize: 13.5,
+                color: step.completed ? "#14532D" : NAVY,
+                fontWeight: step.completed ? 600 : 500,
+                marginLeft: step.indent ? 16 : 0,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 16 }}>{step.completed ? "✓" : "○"}</span>
+              {step.label}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
     function IntakeStep({ profile, update }) {
-      const [brief, setBrief] = useState("");
-      const [industry, setIndustry] = useState("");
-      const [stg, setStg] = useState("");
-      const [market, setMarket] = useState("");
-      const [goal, setGoal] = useState("");
+      const [brief, setBrief] = useState(profile.intake?.brief || "");
+      const [industry, setIndustry] = useState(profile.intake?.industry || "");
+      const [stg, setStg] = useState(profile.intake?.stage || "");
+      const [market, setMarket] = useState(profile.intake?.market || "");
+      const [goal, setGoal] = useState(profile.intake?.goal || "");
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState("");
+      const [recording, setRecording] = useState(false);
+      const [recognition, setRecognition] = useState(null);
+
+      useEffect(() => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+          const rec = new SpeechRecognition();
+          rec.continuous = true;
+          rec.interimResults = true;
+          rec.onresult = (event) => {
+            let transcript = "";
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+              transcript += event.results[i][0].transcript + " ";
+            }
+            if (event.results[event.results.length - 1].isFinal) {
+              setBrief(prev => prev + " " + transcript);
+            }
+          };
+          rec.onerror = () => setErr("Microphone error. Please try again.");
+          setRecognition(rec);
+        }
+      }, []);
+
+      const toggleMicrophone = () => {
+        if (!recognition) return;
+        if (recording) {
+          recognition.stop();
+          setRecording(false);
+        } else {
+          setBrief("");
+          recognition.start();
+          setRecording(true);
+        }
+      };
 
       const generateSOWClick = async () => {
         if (brief.trim().length < 60) { setErr("Tell us more — at least a few sentences."); return; }
@@ -215,10 +403,22 @@
 
       return (
         <Card>
-          <StepHeader n={1} title="Tell us everything about your business" sub="Write freely — your idea, your market, your numbers, constraints, and goals." />
-          <textarea value={brief} onChange={e => { setBrief(e.target.value); setErr(""); }} rows={9} placeholder="We're building a compliance-first AI platform for mid-size food manufacturers in Saudi Arabia..." style={{ ...inputStyle, resize: "vertical", lineHeight: 1.65, fontSize: 14.5 }} />
+          <StepHeader n={1} title="Tell us everything about your business" sub="Write freely or use the microphone — your idea, market, numbers, constraints, goals." />
+          <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+            <textarea value={brief} onChange={e => { setBrief(e.target.value); setErr(""); }} rows={9} placeholder="We're building a compliance-first AI platform for mid-size food manufacturers..." style={{ ...inputStyle, resize: "vertical", lineHeight: 1.65, fontSize: 14.5, flex: 1 }} />
+            {recognition && (
+              <Btn 
+                onClick={toggleMicrophone}
+                variant={recording ? "success" : "subtle"}
+                style={{ height: 44, alignSelf: "flex-start", padding: "0 16px", display: "flex", alignItems: "center", gap: 8 }}
+              >
+                {recording ? "🎤 Recording…" : "🎤"}
+              </Btn>
+            )}
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginTop: 20 }}>
-            <Select label="Industry" value={industry} onChange={setIndustry} options={INDUSTRIES} />
+            <ComboSelect label="Industry" value={industry} onChange={setIndustry} options={INDUSTRIES} />
             <Select label="Business stage" value={stg} onChange={setStg} options={STAGES} />
             <Select label="Target market" value={market} onChange={setMarket} options={MARKETS} />
             <Select label="Primary goal" value={goal} onChange={setGoal} options={GOALS} />
@@ -239,7 +439,7 @@
       const isApproval = (t) => /^(yes|approved?|looks good|go ahead|confirm|ok|perfect)\b/i.test(t.trim());
 
       const approveDirectly = () => {
-        setChat([...chat, { type: "user", text: "Yes, approved!" }, { type: "system", text: "✓ Scope of work approved! Ready to proceed to analysis." }]);
+        setChat([...chat, { type: "user", text: "Yes, approved!" }, { type: "system", text: "✓ Scope approved! Moving to analysis." }]);
         update({ stage: "milestones", currentMilestoneIndex: 0 });
       };
 
@@ -249,21 +449,18 @@
         
         const userMsg = message.trim();
         
-        // Check if it's approval
         if (isApproval(userMsg)) {
-          setChat([...chat, { type: "user", text: userMsg }, { type: "system", text: "✓ Scope of work approved! Ready to proceed to analysis." }]);
+          setChat([...chat, { type: "user", text: userMsg }, { type: "system", text: "✓ Scope approved! Moving to analysis." }]);
           update({ stage: "milestones", currentMilestoneIndex: 0 });
           return;
         }
 
-        // Add user message to chat
         const updatedChat = [...chat, { type: "user", text: userMsg }];
         setChat(updatedChat);
         setMessage("");
         setLoading(true);
 
         try {
-          // Determine if it's a question or revision
           const isQuestion = /^(what|where|how|does|can|will|is|do|when|which)\s/i.test(userMsg) || userMsg.includes("?");
           const interactionType = isQuestion ? "question" : "revision";
 
@@ -282,10 +479,8 @@
           const data = await res.json();
 
           if (data.type === "answer") {
-            // Add answer to chat
             setChat([...updatedChat, { type: "assistant", text: data.response }]);
           } else if (data.type === "revision") {
-            // Update SOW and show what changed
             const changesSummary = data.sow.changes_made || "Scope updated";
             const newMilestonesStr = data.sow.milestones.map((m, i) => `${i + 1}. ${m.name}`).join(", ");
             const assistantMsg = `✓ ${changesSummary}\n\nRevised milestones: ${newMilestonesStr}\n\nDoes this look good? Type 'Yes' to approve or describe further changes.`;
@@ -302,25 +497,22 @@
 
       return (
         <Card>
-          <StepHeader n={2} title="Your scope of work" sub="Review it, ask questions, request changes, or approve to proceed." />
+          <StepHeader n={2} title="Our scope of work" sub="We've designed this engagement for you. Review, ask questions, request changes, or approve." />
           
-          {/* Current SOW Summary */}
           <div style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: "18px 22px", fontSize: 14.5, color: "#25384A", lineHeight: 1.7, marginBottom: 24 }}>
-            <strong>Scope:</strong> {sow.engagement_summary}
+            <strong>Our approach:</strong> {sow.engagement_summary.replace(/The /g, "We ").replace(/They /g, "You ")}
           </div>
 
-          {/* Milestones */}
           <div style={{ marginBottom: 24, paddingBottom: 24, borderBottom: "1px solid #EDF1F4" }}>
-            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Milestones ({sow.milestones.length})</h3>
+            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>What we'll deliver ({sow.milestones.length} milestones)</h3>
             {sow.milestones.map((m, i) => (
               <div key={m.key + i} style={{ display: "flex", gap: 12, padding: "10px 0", fontSize: 13.5, color: "#5A6B7C" }}>
                 <span style={{ fontWeight: 600, color: NAVY, minWidth: 24 }}>{i + 1}.</span>
-                <span><strong>{m.name}</strong> — {m.rationale}</span>
+                <span><strong>{m.name}</strong> — {m.rationale.replace(/The /g, "We ").replace(/They /g, "You ")}</span>
               </div>
             ))}
           </div>
 
-          {/* Chat History */}
           <div style={{ marginBottom: 24 }}>
             <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Conversation</h3>
             <div style={{ background: "#FAFBFC", borderRadius: 10, padding: 16, minHeight: 120, maxHeight: 300, overflowY: "auto", marginBottom: 16 }}>
@@ -348,7 +540,6 @@
             </div>
           </div>
 
-          {/* Input Section */}
           <div style={{ marginBottom: 24, borderTop: "1px solid #EDF1F4", paddingTop: 20 }}>
             <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Ask or Revise</h3>
             <Field label="">
@@ -356,32 +547,22 @@
                 value={message} 
                 onChange={e => { setMessage(e.target.value); setErr(""); }} 
                 rows={3} 
-                placeholder="Ask: 'Where will pricing strategy be covered?' or Revise: 'Add financial analysis, drop pitch deck' or Approve: 'Yes'" 
+                placeholder="Ask: 'Where do you cover pricing?' or Revise: 'Add financial analysis' or Approve: 'Yes'" 
                 style={{ ...inputStyle, resize: "vertical" }} 
                 disabled={loading}
               />
             </Field>
             {err && <Warn>{err}</Warn>}
             <Btn onClick={send} disabled={loading}>{loading ? "Processing..." : "Send"}</Btn>
-            {profile.sowFeedback && profile.sowFeedback.length > 0 && (
-              <div style={{ marginTop: 12, fontSize: 12.5, color: "#8A94A6" }}>
-                {profile.sowFeedback.length} revision{profile.sowFeedback.length !== 1 ? "s" : ""} applied
-              </div>
-            )}
           </div>
 
-          {/* Approval Button - Always Visible */}
           <div style={{ borderTop: "1px solid #EDF1F4", paddingTop: 20 }}>
-            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Ready to Proceed?</h3>
             <Btn 
               onClick={approveDirectly}
               style={{ width: "100%" }}
             >
-              ✓ Approve Scope & Move to Analysis
+              ✓ Approve & Move to Analysis
             </Btn>
-            <p style={{ fontSize: 13, color: "#8A94A6", marginTop: 10, textAlign: "center" }}>
-              Or continue refining above by asking questions or requesting changes
-            </p>
           </div>
         </Card>
       );
@@ -392,6 +573,48 @@
       const currentIndex = profile.currentMilestoneIndex || 0;
       const currentMilestone = sow.milestones[currentIndex];
       const totalMilestones = sow.milestones.length;
+      const [report, setReport] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [err, setErr] = useState("");
+
+      useEffect(() => {
+        generateReport();
+      }, [currentIndex]);
+
+      const generateReport = async () => {
+        setLoading(true);
+        try {
+          const res = await fetch('/api/generate-milestone-report', {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              milestoneKey: currentMilestone.key,
+              milestoneName: currentMilestone.name,
+              sow,
+              intake: profile.intake,
+            }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          setReport(data.report);
+        } catch (e) {
+          setErr(`Error generating report: ${e.message}`);
+        }
+        setLoading(false);
+      };
+
+      const downloadPDF = () => {
+        if (!report) return;
+        const element = document.getElementById('report-content');
+        const opt = {
+          margin: 10,
+          filename: `${report.title}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2 },
+          jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+        };
+        html2pdf().set(opt).from(element).save();
+      };
 
       return (
         <Card>
@@ -401,12 +624,54 @@
             sub={`Milestone ${currentIndex + 1} of ${totalMilestones}`}
           />
           
-          <div style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: "18px 22px", fontSize: 14.5, color: "#25384A", lineHeight: 1.7, marginBottom: 24 }}>
-            {currentMilestone.rationale}
-          </div>
+          {loading && <Spinner label="Generating analysis report…" />}
+
+          {report && !loading && (
+            <div id="report-content" style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: 24, marginBottom: 24 }}>
+              <div style={{ marginBottom: 20, borderBottom: "2px solid #DCE7E4", paddingBottom: 20 }}>
+                <Logo />
+              </div>
+              <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 22, marginBottom: 16 }}>{report.title}</h2>
+              
+              <div style={{ marginBottom: 24 }}>
+                <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 10 }}>Executive Summary</h4>
+                <p style={{ color: "#5A6B7C", lineHeight: 1.7 }}>{report.executive_summary}</p>
+              </div>
+
+              <div style={{ marginBottom: 24 }}>
+                <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 10 }}>Key Findings</h4>
+                <ul style={{ color: "#5A6B7C", paddingLeft: 20, lineHeight: 1.8 }}>
+                  {report.findings.map((f, i) => <li key={i}>{f}</li>)}
+                </ul>
+              </div>
+
+              <div style={{ marginBottom: 24 }}>
+                <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 10 }}>Recommendations</h4>
+                <ul style={{ color: "#5A6B7C", paddingLeft: 20, lineHeight: 1.8 }}>
+                  {report.recommendations.map((r, i) => <li key={i}>{r}</li>)}
+                </ul>
+              </div>
+
+              <div>
+                <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 10 }}>Success Metrics</h4>
+                <ul style={{ color: "#5A6B7C", paddingLeft: 20, lineHeight: 1.8 }}>
+                  {report.metrics.map((m, i) => <li key={i}>{m}</li>)}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {report && !loading && (
+            <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+              <Btn onClick={downloadPDF}>📥 Download PDF</Btn>
+              <Btn variant="subtle" onClick={() => window.print()}>🖨 Print</Btn>
+            </div>
+          )}
+
+          {err && <Warn>{err}</Warn>}
 
           <div style={{ marginBottom: 24 }}>
-            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Engagement Progress</h3>
+            <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 14, marginBottom: 12 }}>Progress</h4>
             {sow.milestones.map((m, i) => (
               <div key={m.key + i} style={{ 
                 display: "flex", 
@@ -415,18 +680,11 @@
                 fontSize: 13.5, 
                 color: i === currentIndex ? NAVY : "#8A94A6",
                 fontWeight: i === currentIndex ? 600 : 400,
-                opacity: i <= currentIndex ? 1 : 0.6
               }}>
-                <span style={{ minWidth: 24 }}>{i === currentIndex ? "→" : i < currentIndex ? "✓" : "○"}</span>
+                <span>{i === currentIndex ? "→" : i < currentIndex ? "✓" : "○"}</span>
                 <span>{m.name}</span>
               </div>
             ))}
-          </div>
-
-          <div style={{ background: "#E8F2FF", borderRadius: 10, padding: "18px 22px", marginBottom: 24 }}>
-            <p style={{ color: NAVY, fontSize: 14, margin: 0, lineHeight: 1.6 }}>
-              📊 Full analysis report for <strong>{currentMilestone.name}</strong> will be generated here.
-            </p>
           </div>
 
           <div style={{ display: "flex", gap: 12 }}>
@@ -461,9 +719,9 @@
             <div style={{ width: 64, height: 64, borderRadius: "50%", background: GOLD, color: NAVY, fontSize: 30, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>✓</div>
             <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 28, margin: 0 }}>Engagement Complete</h2>
             <p style={{ color: "#5A6B7C", fontSize: 15, marginTop: 10, maxWidth: 520, marginLeft: "auto", marginRight: "auto", lineHeight: 1.7 }}>
-              All milestones have been analyzed. Your complete strategy book, executive summary, and pitch deck are ready for download.
+              We've completed all milestone analysis. Your strategy book, executive summary, and complete report package are ready.
             </p>
-            <Good>📊 Downloads and Calendly booking coming soon!</Good>
+            <Good>📊 All deliverables ready for download!</Good>
           </div>
         </Card>
       );
@@ -472,9 +730,47 @@
     function App() {
       const [view, setView] = useState("login");
       const [user, setUser] = useState(null);
-      const [profile, setProfile] = useState({ stage: "intake", intake: null, sow: null, sowFeedback: [], currentMilestoneIndex: 0 });
+      const [profile, setProfile] = useState(null);
 
-      const updateProfile = (patch) => setProfile({ ...profile, ...patch });
+      const handleLogin = (u) => {
+        setUser(u);
+        setView("business-selector");
+      };
+
+      const handleSelectBusiness = (business) => {
+        setProfile(business);
+        setView("engagement");
+      };
+
+      const handleUpdateProfile = (patch) => {
+        const updated = { ...profile, ...patch };
+        setProfile(updated);
+        
+        // Save to localStorage
+        const data = storage.getProfiles();
+        const businessIndex = data.businesses.findIndex(b => b.id === profile.id);
+        if (businessIndex >= 0) {
+          data.businesses[businessIndex] = updated;
+          storage.saveProfiles(data);
+        }
+      };
+
+      const handleLogout = () => {
+        setUser(null);
+        setProfile(null);
+        setView("login");
+      };
+
+      const handleStepClick = (stepId) => {
+        if (stepId === "intake") {
+          handleUpdateProfile({ stage: "intake" });
+        } else if (stepId === "sow_review") {
+          handleUpdateProfile({ stage: "sow_review" });
+        } else if (stepId.startsWith("milestone-")) {
+          const index = parseInt(stepId.split("-")[1]);
+          handleUpdateProfile({ stage: "milestones", currentMilestoneIndex: index });
+        }
+      };
 
       return (
         <div style={{ fontFamily: "Inter, sans-serif", minHeight: "100vh", background: CREAM }}>
@@ -484,16 +780,23 @@
             body { font-family: 'Inter', sans-serif; background: #FAF8F3; }`}
           </style>
           
-          {view === "login" && <LoginView onLogin={(u) => { setUser(u); setView("dashboard"); }} />}
+          {view === "login" && <LoginView onLogin={handleLogin} />}
+          {view === "business-selector" && <BusinessSelectorView user={user} onSelectBusiness={handleSelectBusiness} onLogout={handleLogout} />}
           
-          {view === "dashboard" && <DashboardView user={user} onStartEngagement={() => setView("engagement")} onLogout={() => { setUser(null); setView("login"); }} />}
-          
-          {view === "engagement" && (
-            <div style={{ maxWidth: 1060, margin: "0 auto", padding: "36px 32px" }}>
-              {profile.stage === "intake" && <IntakeStep profile={profile} update={updateProfile} />}
-              {profile.stage === "sow_review" && <SOWStep profile={profile} update={updateProfile} />}
-              {profile.stage === "milestones" && <MilestoneStep profile={profile} update={updateProfile} />}
-              {profile.stage === "complete" && <CompleteStep profile={profile} />}
+          {view === "engagement" && profile && (
+            <div style={{ display: "flex", minHeight: "100vh" }}>
+              <ProgressSidebar 
+                stage={profile.stage}
+                sow={profile.sow}
+                currentMilestoneIndex={profile.currentMilestoneIndex}
+                onStepClick={handleStepClick}
+              />
+              <div style={{ flex: 1, padding: "36px 32px", overflowY: "auto" }}>
+                {profile.stage === "intake" && <IntakeStep profile={profile} update={handleUpdateProfile} />}
+                {profile.stage === "sow_review" && <SOWStep profile={profile} update={handleUpdateProfile} />}
+                {profile.stage === "milestones" && <MilestoneStep profile={profile} update={handleUpdateProfile} />}
+                {profile.stage === "complete" && <CompleteStep profile={profile} />}
+              </div>
             </div>
           )}
         </div>
