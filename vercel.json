@@ -1,0 +1,12 @@
+{
+  "buildCommand": "npm install",
+  "outputDirectory": ".",
+  "framework": "nodejs",
+  "nodeVersion": "20.x",
+  "devCommand": "node server.js",
+  "functions": {
+    "server.js": {
+      "runtime": "nodejs20.x"
+    }
+  }
+}
