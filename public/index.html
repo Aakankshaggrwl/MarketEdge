@@ -234,6 +234,7 @@
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState("");
       const [chat, setChat] = useState([]);
+      const [approved, setApproved] = useState(false);
       const sow = profile.sow;
 
       const isApproval = (t) => /^(yes|approved?|looks good|go ahead|confirm|ok|perfect)\b/i.test(t.trim());
@@ -246,8 +247,9 @@
         
         // Check if it's approval
         if (isApproval(userMsg)) {
-          setChat([...chat, { type: "user", text: userMsg }, { type: "system", text: "✓ Scope of work approved! Moving to next phase..." }]);
-          update({ stage: "complete", sowFeedback: [...(profile.sowFeedback || []), userMsg] });
+          setChat([...chat, { type: "user", text: userMsg }, { type: "system", text: "✓ Scope of work approved! Ready to proceed to analysis." }]);
+          setApproved(true);
+          setMessage("");
           return;
         }
 
@@ -280,9 +282,10 @@
             // Add answer to chat
             setChat([...updatedChat, { type: "assistant", text: data.response }]);
           } else if (data.type === "revision") {
-            // Update SOW and show what changed
-            const changesSummary = data.sow.changes_made || "SOW updated";
-            const assistantMsg = `✓ ${changesSummary}\n\nUpdated scope:`;
+            // Show what changed and updated milestones
+            const changesSummary = data.sow.changes_made || "Scope updated";
+            const newMilestonesStr = data.sow.milestones.map((m, i) => `${i + 1}. ${m.name}`).join(", ");
+            const assistantMsg = `✓ ${changesSummary}\n\nRevised milestones: ${newMilestonesStr}`;
             
             setChat([...updatedChat, { type: "assistant", text: assistantMsg }]);
             update({ sow: data.sow, sowFeedback: [...(profile.sowFeedback || []), userMsg] });
@@ -296,11 +299,11 @@
 
       return (
         <Card>
-          <StepHeader n={2} title="Your scope of work" sub="Ask questions, request changes, or type 'Yes' to approve." />
+          <StepHeader n={2} title="Your scope of work" sub="Ask questions, request changes, or type 'Yes' to approve and move to analysis." />
           
           {/* Current SOW Summary */}
           <div style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: "18px 22px", fontSize: 14.5, color: "#25384A", lineHeight: 1.7, marginBottom: 24 }}>
-            <strong>Current scope:</strong> {sow.engagement_summary}
+            <strong>Scope:</strong> {sow.engagement_summary}
           </div>
 
           {/* Milestones */}
@@ -343,23 +346,105 @@
           </div>
 
           {/* Input */}
-          <div style={{ marginTop: 20 }}>
-            <Field label="">
-              <textarea 
-                value={message} 
-                onChange={e => { setMessage(e.target.value); setErr(""); }} 
-                rows={3} 
-                placeholder="Ask: 'Where will pricing strategy be covered?' or Revise: 'Add financial analysis and drop the pitch deck' or Approve: 'Yes'" 
-                style={{ ...inputStyle, resize: "vertical" }} 
-                disabled={loading}
-              />
-            </Field>
-            {err && <Warn>{err}</Warn>}
-            <Btn onClick={send} disabled={loading}>{loading ? "Processing..." : "Send"}</Btn>
-            {profile.sowFeedback && profile.sowFeedback.length > 0 && (
-              <div style={{ marginTop: 12, fontSize: 12.5, color: "#8A94A6" }}>
-                {profile.sowFeedback.length} interaction{profile.sowFeedback.length !== 1 ? "s" : ""} applied
+          {!approved && (
+            <div style={{ marginTop: 20 }}>
+              <Field label="">
+                <textarea 
+                  value={message} 
+                  onChange={e => { setMessage(e.target.value); setErr(""); }} 
+                  rows={3} 
+                  placeholder="Ask: 'Where will pricing strategy be covered?' or Revise: 'Add financial analysis, drop pitch deck' or Approve: 'Yes'" 
+                  style={{ ...inputStyle, resize: "vertical" }} 
+                  disabled={loading}
+                />
+              </Field>
+              {err && <Warn>{err}</Warn>}
+              <Btn onClick={send} disabled={loading}>{loading ? "Processing..." : "Send"}</Btn>
+              {profile.sowFeedback && profile.sowFeedback.length > 0 && (
+                <div style={{ marginTop: 12, fontSize: 12.5, color: "#8A94A6" }}>
+                  {profile.sowFeedback.length} revision{profile.sowFeedback.length !== 1 ? "s" : ""} applied
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Approval Button */}
+          {approved && (
+            <div style={{ marginTop: 24, textAlign: "center" }}>
+              <Good>✓ Scope approved!</Good>
+              <Btn 
+                onClick={() => update({ stage: "milestones", currentMilestoneIndex: 0 })}
+                style={{ marginTop: 20 }}
+              >
+                Proceed to Milestone Analysis
+              </Btn>
+            </div>
+          )}
+        </Card>
+      );
+    }
+
+    function MilestoneStep({ profile, update }) {
+      const sow = profile.sow;
+      const currentIndex = profile.currentMilestoneIndex || 0;
+      const currentMilestone = sow.milestones[currentIndex];
+      const totalMilestones = sow.milestones.length;
+
+      return (
+        <Card>
+          <StepHeader 
+            n={3} 
+            title={`${currentMilestone.name}`}
+            sub={`Milestone ${currentIndex + 1} of ${totalMilestones}`}
+          />
+          
+          <div style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: "18px 22px", fontSize: 14.5, color: "#25384A", lineHeight: 1.7, marginBottom: 24 }}>
+            {currentMilestone.rationale}
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Remaining Milestones</h3>
+            {sow.milestones.map((m, i) => (
+              <div key={m.key + i} style={{ 
+                display: "flex", 
+                gap: 12, 
+                padding: "10px 0", 
+                fontSize: 13.5, 
+                color: i === currentIndex ? NAVY : "#8A94A6",
+                fontWeight: i === currentIndex ? 600 : 400,
+                opacity: i <= currentIndex ? 1 : 0.6
+              }}>
+                <span style={{ minWidth: 24 }}>{i === currentIndex ? "→" : "✓"}</span>
+                <span>{m.name}</span>
               </div>
+            ))}
+          </div>
+
+          <div style={{ background: "#E8F2FF", borderRadius: 10, padding: "18px 22px", marginBottom: 24 }}>
+            <p style={{ color: NAVY, fontSize: 14, margin: 0, lineHeight: 1.6 }}>
+              📊 Full analysis report for <strong>{currentMilestone.name}</strong> will be generated here.
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 12 }}>
+            {currentIndex > 0 && (
+              <Btn 
+                variant="subtle" 
+                onClick={() => update({ currentMilestoneIndex: currentIndex - 1 })}
+              >
+                ← Previous
+              </Btn>
+            )}
+            {currentIndex < totalMilestones - 1 ? (
+              <Btn 
+                onClick={() => update({ currentMilestoneIndex: currentIndex + 1 })}
+              >
+                Next Milestone →
+              </Btn>
+            ) : (
+              <Btn onClick={() => update({ stage: "complete" })}>
+                Complete Engagement
+              </Btn>
             )}
           </div>
         </Card>
@@ -373,9 +458,9 @@
             <div style={{ width: 64, height: 64, borderRadius: "50%", background: GOLD, color: NAVY, fontSize: 30, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>✓</div>
             <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 28, margin: 0 }}>Engagement Complete</h2>
             <p style={{ color: "#5A6B7C", fontSize: 15, marginTop: 10, maxWidth: 520, marginLeft: "auto", marginRight: "auto", lineHeight: 1.7 }}>
-              Your scope of work has been approved. The engagement is now ready to proceed with milestone analysis.
+              All milestones have been analyzed. Your complete strategy book, executive summary, and pitch deck are ready for download.
             </p>
-            <Good>Next: Milestone-by-milestone strategy analysis coming soon!</Good>
+            <Good>📊 Downloads and Calendly booking coming soon!</Good>
           </div>
         </Card>
       );
@@ -384,7 +469,7 @@
     function App() {
       const [view, setView] = useState("login");
       const [user, setUser] = useState(null);
-      const [profile, setProfile] = useState({ stage: "intake", intake: null, sow: null, sowFeedback: [] });
+      const [profile, setProfile] = useState({ stage: "intake", intake: null, sow: null, sowFeedback: [], currentMilestoneIndex: 0 });
 
       const updateProfile = (patch) => setProfile({ ...profile, ...patch });
 
@@ -404,6 +489,7 @@
             <div style={{ maxWidth: 1060, margin: "0 auto", padding: "36px 32px" }}>
               {profile.stage === "intake" && <IntakeStep profile={profile} update={updateProfile} />}
               {profile.stage === "sow_review" && <SOWStep profile={profile} update={updateProfile} />}
+              {profile.stage === "milestones" && <MilestoneStep profile={profile} update={updateProfile} />}
               {profile.stage === "complete" && <CompleteStep profile={profile} />}
             </div>
           )}
