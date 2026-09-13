@@ -84,7 +84,7 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
 
     const message = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 2000,
+      max_tokens: 4000,
       system: SENIOR_VOICE + ` Respond ONLY with JSON, no markdown fences, no preamble.`,
       messages: [{ role: "user", content: prompt }],
     });
@@ -154,7 +154,7 @@ Make the requested changes. Return ONLY valid JSON (no markdown, no explanation)
 
     const message = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 2000,
+      max_tokens: 4000,
       system: SENIOR_VOICE + ` You must respond with ${responseType === "answer" ? "a helpful answer" : "valid JSON only. No markdown. No explanation."}.`,
       messages: [{ role: "user", content: prompt }],
     });
