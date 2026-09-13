@@ -30,17 +30,26 @@ const MILESTONE_CATALOG = [
 // Function to safely parse JSON
 function safeParseJSON(text) {
   try {
-    let clean = text.replace(/```json|```/g, "").trim();
+    // Remove markdown code blocks
+    let clean = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    
+    // First attempt: direct parse
     try {
       return JSON.parse(clean);
     } catch (e1) {
-      clean = clean.replace(/\n/g, " ").replace(/\r/g, "");
+      // Second attempt: remove problematic whitespace but preserve structure
+      clean = clean.replace(/[\r\n]/g, " ");
       try {
         return JSON.parse(clean);
       } catch (e2) {
-        const jsonMatch = clean.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+        // Third attempt: find and extract JSON object/array
+        const jsonMatch = clean.match(/\{[\s\S]*\}(?=\s*$)/) || clean.match(/\[[\s\S]*\](?=\s*$)/);
         if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
+          try {
+            return JSON.parse(jsonMatch[0]);
+          } catch (e3) {
+            throw new Error(`Extracted JSON still invalid: ${e3.message}`);
+          }
         }
         throw e2;
       }
