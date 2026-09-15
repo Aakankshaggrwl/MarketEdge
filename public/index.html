@@ -315,7 +315,11 @@
     }
 
     #full-report-pdf {
-      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: -1;
+      pointer-events: none;
     }
 
     .combo-select {
@@ -939,6 +943,131 @@
       );
     }
 
+    // ============ REPORT DOCUMENT (PDF / PRINT) ============
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Builds a full standalone HTML document string: cover page + one page per section,
+    // each carrying a running header (MarketEdge wordmark + report title) and footer
+    // (confidentiality line + page label). Used for both Print and the hidden PDF-export node.
+    const REPORT_STYLES = `
+  @page { size: A4; margin: 0; }
+  #full-report-pdf * { box-sizing: border-box; }
+  #full-report-pdf { font-family: 'Georgia', 'Times New Roman', serif; color: #1a1a1a; }
+  .pdf-page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 18mm 16mm;
+    page-break-after: always;
+    position: relative;
+    background: #fff;
+  }
+  .pdf-page:last-child { page-break-after: auto; }
+  .pdf-cover {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .pdf-cover-wordmark { font-family: Georgia, serif; font-size: 40px; font-weight: 700; margin-bottom: 6px; }
+  .pdf-cover-tagline { font-size: 12px; letter-spacing: 3px; color: #888; margin-bottom: 90px; }
+  .pdf-cover-rule { width: 100%; max-width: 400px; border-top: 3px solid #102A43; margin-bottom: 26px; }
+  .pdf-cover-rule.light { border-top: 1px solid #ccc; margin-top: 34px; }
+  .pdf-cover-kicker { font-size: 12px; letter-spacing: 2px; color: #0F766E; font-weight: 700; margin-bottom: 10px; }
+  .pdf-cover-title { font-size: 30px; color: #102A43; font-weight: 700; max-width: 480px; margin-bottom: 10px; }
+  .pdf-cover-meta { font-size: 13px; color: #555; margin-top: 4px; }
+  .pdf-cover-meta.muted { color: #999; font-size: 12px; }
+  .pdf-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 2px solid #102A43;
+    padding-bottom: 12px;
+    margin-bottom: 26px;
+  }
+  .pdf-header-logo { font-family: Georgia, serif; font-weight: 700; font-size: 15px; }
+  .pdf-header-title { font-size: 11px; color: #888; }
+  .pdf-section-heading { font-family: Georgia, serif; color: #102A43; font-size: 20px; margin: 0 0 16px; }
+  .pdf-section-content { font-size: 12.5px; line-height: 1.8; color: #2a2a2a; white-space: pre-wrap; }
+  .pdf-footer {
+    position: absolute;
+    bottom: 12mm;
+    left: 16mm;
+    right: 16mm;
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: #999;
+    border-top: 1px solid #ddd;
+    padding-top: 8px;
+  }
+`;
+
+    // Builds just the cover + section page markup (no <html>/<head>/<body> wrapper) —
+    // safe to inject via dangerouslySetInnerHTML since every dynamic value is escaped.
+    function buildReportBodyHTML(report, milestone, intake) {
+      const title = escapeHtml(report.title || milestone.name);
+      const preparedFor = [intake?.industry, intake?.market].filter(Boolean).map(escapeHtml).join(' — ');
+      const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+      const totalPages = report.sections.length + 1;
+
+      const wordmark = `<span style="color:#102A43">Market</span><span style="color:#C9A227">Edge</span>`;
+
+      const coverPage = `
+        <section class="pdf-page pdf-cover">
+          <div class="pdf-cover-wordmark">${wordmark}</div>
+          <div class="pdf-cover-tagline">AI-NATIVE STRATEGY PORTAL</div>
+          <div class="pdf-cover-rule"></div>
+          <div class="pdf-cover-kicker">STRATEGIC ANALYSIS REPORT</div>
+          <div class="pdf-cover-title">${title}</div>
+          <div class="pdf-cover-rule light"></div>
+          ${preparedFor ? `<div class="pdf-cover-meta">Prepared for: ${preparedFor}</div>` : ''}
+          <div class="pdf-cover-meta muted">${dateStr}</div>
+        </section>`;
+
+      const sectionPages = report.sections.map((s, i) => `
+        <section class="pdf-page">
+          <header class="pdf-header">
+            <div class="pdf-header-logo">${wordmark}</div>
+            <div class="pdf-header-title">${title}</div>
+          </header>
+          <h2 class="pdf-section-heading">${escapeHtml(s.heading)}</h2>
+          <div class="pdf-section-content">${escapeHtml(s.content)}</div>
+          <footer class="pdf-footer">
+            <span>MarketEdge Strategic Analysis Report — Confidential</span>
+            <span>Page ${i + 2} of ${totalPages}</span>
+          </footer>
+        </section>`).join('');
+
+      return `${coverPage}\n${sectionPages}`;
+    }
+
+    // Full standalone document for the Print window.
+    function buildReportHTML(report, milestone, intake) {
+      const title = escapeHtml(report.title || milestone.name);
+      return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${title}</title>
+<style>
+  body { margin: 0; }
+  ${REPORT_STYLES.replace(/#full-report-pdf ?/g, '')}
+</style>
+</head>
+<body>
+${buildReportBodyHTML(report, milestone, intake)}
+</body>
+</html>`;
+    }
+
     function MilestoneStep({ milestone, sow, intake, onNext, onPrev, isFirst, isLast }) {
       const [report, setReport] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -968,31 +1097,30 @@
       const downloadPDF = () => {
         const element = document.getElementById('full-report-pdf');
         if (element) {
-          html2pdf().set({ margin: 10, filename: `${milestone.name}.pdf` }).from(element).save();
+          html2pdf().set({
+            margin: 0,
+            filename: `MarketEdge-${milestone.name.replace(/\s+/g, '-')}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: {
+              scale: 2,
+              useCORS: true,
+              windowWidth: 794,
+              height: element.scrollHeight,
+              windowHeight: element.scrollHeight
+            },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['css', 'legacy'] }
+          }).from(element).save();
         }
       };
 
       const printReport = () => {
         if (!report) return;
-        const printWindow = window.open('', '', 'width=900,height=600');
-        printWindow.document.write(`
-          <html>
-            <head>
-              <style>
-                body { font-family: Arial, sans-serif; padding: 20px; }
-                h1 { color: #102A43; }
-                h2 { color: #0F766E; margin-top: 30px; }
-                p { line-height: 1.6; }
-              </style>
-            </head>
-            <body>
-              <h1>${report.title}</h1>
-              ${report.sections.map(s => `<h2>${s.heading}</h2><p>${s.content}</p>`).join('')}
-            </body>
-          </html>
-        `);
+        const printWindow = window.open('', '', 'width=900,height=1100');
+        printWindow.document.write(buildReportHTML(report, milestone, intake));
         printWindow.document.close();
-        printWindow.print();
+        printWindow.focus();
+        setTimeout(() => printWindow.print(), 300);
       };
 
       const summarySection = report?.sections?.[0];
@@ -1033,14 +1161,11 @@
             </>
           )}
 
-          <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '800px' }} id="full-report-pdf">
-            <h1>{report?.title}</h1>
-            {report?.sections.map((s, i) => (
-              <div key={i} style={{ pageBreakInside: 'avoid', marginBottom: '40px' }}>
-                <h2>{s.heading}</h2>
-                <p>{s.content}</p>
-              </div>
-            ))}
+          <style dangerouslySetInnerHTML={{ __html: REPORT_STYLES }} />
+          <div id="full-report-pdf">
+            {report && (
+              <div dangerouslySetInnerHTML={{ __html: buildReportBodyHTML(report, milestone, intake) }} />
+            )}
           </div>
 
           <div style={{ marginTop: '30px', display: 'flex', gap: '12px' }}>
