@@ -1,129 +1,476 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MarketEdge — AI Strategy Portal</title>
+  
+  <!-- Libraries -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #FAF8F3;
+      color: #102A43;
+    }
+
+    .app-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 280px;
+      background: #102A43;
+      color: white;
+      padding: 24px;
+      overflow-y: auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .sidebar h3 {
+      font-family: 'Fraunces', serif;
+      font-size: 18px;
+      margin-bottom: 20px;
+      color: #14B8A6;
+    }
+
+    .sidebar-step {
+      padding: 12px;
+      margin: 8px 0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.3s;
+      background: rgba(255,255,255,0.1);
+    }
+
+    .sidebar-step.completed {
+      background: #14B8A6;
+      color: white;
+    }
+
+    .sidebar-step.active {
+      background: #C9A227;
+      color: #102A43;
+      font-weight: 600;
+    }
+
+    .sidebar-step:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 40px;
+      overflow-y: auto;
+    }
+
+    .view {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-family: 'Fraunces', serif;
+      font-size: 42px;
+      margin-bottom: 16px;
+      color: #102A43;
+    }
+
+    h2 {
+      font-family: 'Fraunces', serif;
+      font-size: 32px;
+      margin-top: 24px;
+      margin-bottom: 16px;
+      color: #102A43;
+    }
+
+    .subtitle {
+      font-size: 18px;
+      color: #666;
+      margin-bottom: 32px;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 12px;
+      margin: 12px 0;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    button {
+      background: #0F766E;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background 0.3s;
+      margin: 8px 8px 8px 0;
+    }
+
+    button:hover {
+      background: #14B8A6;
+    }
+
+    button.secondary {
+      background: #C9A227;
+      color: #102A43;
+    }
+
+    button.secondary:hover {
+      background: #d4b03a;
+    }
+
+    .card {
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      margin: 16px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .chat-container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      max-height: 500px;
+      overflow-y: auto;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .chat-message {
+      margin: 12px 0;
+      padding: 12px;
+      border-radius: 6px;
+      max-width: 80%;
+    }
+
+    .chat-message.user {
+      background: #14B8A6;
+      color: white;
+      margin-left: auto;
+    }
+
+    .chat-message.assistant {
+      background: #E8F4F8;
+      color: #102A43;
+    }
+
+    .chat-message.system {
+      background: #C9A227;
+      color: #102A43;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .chat-input {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .chat-input input {
+      flex: 1;
+      margin: 0;
+    }
+
+    .chat-input button {
+      margin: 0;
+    }
+
+    .milestone-list {
+      list-style: none;
+      margin: 20px 0;
+    }
+
+    .milestone-list li {
+      padding: 12px;
+      margin: 8px 0;
+      background: #f0f0f0;
+      border-radius: 6px;
+      border-left: 4px solid #0F766E;
+    }
+
+    .milestone-list li.active {
+      background: #E8F4F8;
+      border-left-color: #14B8A6;
+    }
+
+    .report-banner {
+      background: #C9A227;
+      color: #102A43;
+      padding: 16px;
+      border-radius: 6px;
+      margin: 20px 0;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .report-section {
+      background: white;
+      padding: 20px;
+      margin: 16px 0;
+      border-radius: 6px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .report-section h3 {
+      color: #0F766E;
+      margin-bottom: 12px;
+      font-size: 18px;
+    }
+
+    .report-section p {
+      line-height: 1.6;
+      color: #555;
+      margin-bottom: 12px;
+    }
+
+    #full-report-pdf {
+      display: none;
+    }
+
+    .combo-select {
+      position: relative;
+      width: 100%;
+      margin: 12px 0;
+    }
+
+    .combo-select input {
+      margin: 0;
+      padding: 12px;
+      width: 100%;
+    }
+
+    .combo-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ccc;
+      border-top: none;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .combo-option {
+      padding: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .combo-option:hover {
+      background: #E8F4F8;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 24px;
+      color: #666;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #ddd;
+      border-top: 3px solid #0F766E;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error {
+      background: #fee;
+      color: #c00;
+      padding: 12px;
+      border-radius: 6px;
+      margin: 12px 0;
+      border: 1px solid #fcc;
+    }
+
+    .success {
+      background: #efe;
+      color: #060;
+      padding: 12px;
+      border-radius: 6px;
+      margin: 12px 0;
+      border: 1px solid #cfc;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .business-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: all 0.3s;
+      border: 2px solid transparent;
+    }
+
+    .business-card:hover {
+      border-color: #14B8A6;
+      box-shadow: 0 4px 12px rgba(20, 184, 166, 0.2);
+    }
+
+    .business-card h3 {
+      color: #102A43;
+      margin-bottom: 8px;
+    }
+
+    .business-card p {
+      font-size: 13px;
+      color: #666;
+    }
+
+    .mic-button {
+      padding: 10px 16px;
+      background: #14B8A6;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 8px;
+    }
+
+    .mic-button.recording {
+      background: #c00;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+  </style>
 </head>
 <body>
   <div id="root"></div>
-  
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
+
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
-    const NAVY = "#102A43";
-    const TEAL = "#0F766E";
-    const GOLD = "#C9A227";
-    const CREAM = "#FAF8F3";
-
-    const INDUSTRIES = [
-      "SaaS / Software", "Food & Beverage", "Healthcare", "Fintech", "E-commerce / Retail", 
-      "Manufacturing", "Education", "Logistics", "Consumer Services", "Banking", 
-      "Professional Services", "Technology", "Fashion", "Apparel", "Media", "Advertising",
-      "Real Estate", "Travel & Hospitality", "Energy", "Telecommunications", "Automotive",
-      "Pharma / Biotech", "Agriculture", "Consulting", "Legal Services", "Other"
-    ];
-    const STAGES = ["Idea stage", "Pre-revenue / building", "Early revenue (<$100K)", "Growing ($100K–$1M)", "Scaling ($1M+)", "Plateaued / restructuring"];
-    const MARKETS = ["India", "Middle East / GCC", "USA", "Europe", "Southeast Asia", "Global", "Not sure yet"];
-    const GOALS = ["Validate the idea", "Find my first market", "Enter a new market", "Raise funding", "Restart growth", "Build the full strategy"];
-
-    const inputStyle = { 
-      width: "100%", 
-      padding: "12px 14px", 
-      borderRadius: 8, 
-      border: "1.5px solid #D5DBE3", 
-      fontSize: 15, 
-      fontFamily: "Inter", 
-      color: NAVY, 
-      outline: "none", 
-      boxSizing: "border-box", 
-      background: "#fff" 
-    };
-
-    // localStorage helpers
+    // ============ STORAGE HELPER ============
     const storage = {
-      getProfiles: () => JSON.parse(localStorage.getItem('marketedge_profiles') || '{"businesses":[]}'),
-      saveProfiles: (data) => localStorage.setItem('marketedge_profiles', JSON.stringify(data)),
-      getCurrentBusinessId: () => localStorage.getItem('marketedge_currentBusinessId'),
-      setCurrentBusinessId: (id) => localStorage.setItem('marketedge_currentBusinessId', id),
+      getProfiles: () => {
+        try {
+          const data = localStorage.getItem('marketedge_profiles');
+          return data ? JSON.parse(data) : { businesses: [] };
+        } catch (e) {
+          console.error("Storage error:", e);
+          return { businesses: [] };
+        }
+      },
+      saveProfiles: (data) => {
+        localStorage.setItem('marketedge_profiles', JSON.stringify(data));
+      },
+      getCurrentBusinessId: () => localStorage.getItem('marketedge_current_business'),
+      setCurrentBusinessId: (id) => localStorage.setItem('marketedge_current_business', id),
     };
 
-    function Logo({ light }) {
-      return (
-        <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
-          <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 26, color: light ? "#fff" : NAVY }}>Market</span>
-          <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 26, color: GOLD }}>Edge</span>
-        </div>
-      );
-    }
+    // ============ INDUSTRIES LIST ============
+    const INDUSTRIES = [
+      'SaaS/Software', 'Food & Beverage', 'Healthcare', 'Fintech', 'E-commerce/Retail',
+      'Manufacturing', 'Education', 'Logistics', 'Consumer Services', 'Banking',
+      'Professional Services', 'Technology', 'Fashion', 'Apparel', 'Media',
+      'Advertising', 'Real Estate', 'Travel & Hospitality', 'Energy', 'Telecommunications',
+      'Automotive', 'Pharma/Biotech', 'Agriculture', 'Consulting', 'Legal Services', 'Other'
+    ];
 
-    function Btn({ children, onClick, variant = "primary", small, style, disabled }) {
-      const base = {
-        fontFamily: "Inter", fontWeight: 600, fontSize: small ? 13 : 15, cursor: disabled ? "not-allowed" : "pointer",
-        padding: small ? "8px 16px" : "13px 26px", borderRadius: 8, border: "none", transition: "all .15s", opacity: disabled ? 0.55 : 1
-      };
-      const variants = {
-        primary: { background: TEAL, color: "#fff" },
-        navy: { background: NAVY, color: "#fff" },
-        subtle: { background: "#EEF2F0", color: NAVY },
-        success: { background: "#16A34A", color: "#fff" },
-      };
-      return <button onClick={onClick} style={{ ...base, ...variants[variant], ...style }} disabled={disabled}>{children}</button>;
-    }
+    // ============ MILESTONE CATALOG ============
+    const MILESTONE_CATALOG = [
+      { key: 'customer', name: 'Customer Deep Dive', desc: 'Understand target customers' },
+      { key: 'competitor', name: 'Competitive Intelligence', desc: 'Map the competitive landscape' },
+      { key: 'gap', name: 'Gap Analysis', desc: 'Identify market gaps and opportunities' },
+      { key: 'beachhead', name: 'Beachhead Strategy', desc: 'Define initial market entry' },
+      { key: 'entry', name: 'Market Entry Playbook', desc: 'Detailed go-to-market plan' },
+      { key: 'financial', name: 'Financial Projections', desc: 'Revenue and profitability model' },
+      { key: 'bizplan', name: 'Business Plan', desc: 'Comprehensive business strategy' },
+      { key: 'pitch', name: 'Pitch Deck Strategy', desc: 'Investment pitch framework' },
+      { key: 'execbrief', name: 'Executive Brief', desc: 'High-level summary for leadership' }
+    ];
 
-    function Spinner({ label }) {
-      return (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18, padding: "60px 0" }}>
-          <div style={{ width: 44, height: 44, border: `3.5px solid #E2E8F0`, borderTopColor: TEAL, borderRadius: "50%", animation: "spin 0.9s linear infinite" }} />
-          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-          <div style={{ color: NAVY, fontWeight: 500, fontSize: 15, textAlign: "center" }}>{label}</div>
-        </div>
-      );
-    }
-
-    function Card({ children }) {
-      return <div style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #E2E8F0", padding: "32px 34px" }}>{children}</div>;
-    }
-
-    function Field({ label, children }) {
-      return (
-        <div style={{ marginBottom: 16 }}>
-          {label && <div style={{ fontSize: 13.5, fontWeight: 600, color: NAVY, marginBottom: 6 }}>{label}</div>}
-          {children}
-        </div>
-      );
-    }
-
-    function ComboSelect({ label, value, onChange, options }) {
+    // ============ COMBO SELECT COMPONENT ============
+    function ComboSelect({ value, onChange, options, placeholder }) {
       const [open, setOpen] = useState(false);
-      const filtered = options.filter(o => o.toLowerCase().includes(value.toLowerCase()));
+      const [search, setSearch] = useState(value);
+      const ref = useRef(null);
+
+      useEffect(() => {
+        function handleClickOutside(event) {
+          if (ref.current && !ref.current.contains(event.target)) {
+            setOpen(false);
+          }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }, []);
+
+      const filtered = options.filter(opt =>
+        opt.toLowerCase().includes(search.toLowerCase())
+      );
 
       return (
-        <div style={{ position: "relative" }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: NAVY, marginBottom: 6 }}>{label}</div>
-          <input 
+        <div className="combo-select" ref={ref}>
+          <input
             type="text"
-            value={value}
-            onChange={e => onChange(e.target.value)}
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setOpen(true);
+            }}
             onFocus={() => setOpen(true)}
-            onBlur={() => setTimeout(() => setOpen(false), 200)}
-            placeholder="Type or select…"
-            style={{ ...inputStyle, position: "relative", zIndex: 10 }}
+            placeholder={placeholder}
           />
           {open && filtered.length > 0 && (
-            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #D5DBE3", borderTop: "none", borderRadius: "0 0 8 8", maxHeight: 200, overflowY: "auto", zIndex: 20 }}>
-              {filtered.map(opt => (
-                <div 
+            <div className="combo-dropdown">
+              {filtered.map((opt) => (
+                <div
                   key={opt}
-                  onClick={() => { onChange(opt); setOpen(false); }}
-                  style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #EDF1F4", fontSize: 14, color: NAVY }}
-                  onMouseEnter={e => e.target.style.background = "#F7FAF9"}
-                  onMouseLeave={e => e.target.style.background = "#fff"}
+                  className="combo-option"
+                  onClick={() => {
+                    onChange(opt);
+                    setSearch(opt);
+                    setOpen(false);
+                  }}
                 >
                   {opt}
                 </div>
@@ -134,201 +481,180 @@
       );
     }
 
-    function Select({ label, value, onChange, options }) {
-      return (
-        <div>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: NAVY, marginBottom: 6 }}>{label}</div>
-          <select value={value} onChange={e => onChange(e.target.value)} style={{ ...inputStyle, appearance: "auto" }}>
-            <option value="">Select…</option>
-            {options.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        </div>
-      );
+    // ============ API FUNCTIONS ============
+    async function generateSOW(intake, onSOW) {
+      try {
+        console.log("📝 Generating SOW with intake:", intake);
+        const response = await fetch('/api/generate-sow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ intake })
+        });
+
+        const data = await response.json();
+        console.log("✅ SOW generated:", data);
+
+        if (!response.ok) {
+          onSOW({ error: data.error || "Failed to generate SOW" });
+          return;
+        }
+
+        onSOW(data.sow);
+      } catch (err) {
+        console.error("❌ SOW generation error:", err);
+        onSOW({ error: err.message });
+      }
     }
 
-    function Warn({ children }) {
-      return <div style={{ marginTop: 16, background: "#FEF6E4", borderLeft: `4px solid ${GOLD}`, borderRadius: 6, padding: "12px 16px", fontSize: 14, color: "#6B5310" }}>{children}</div>;
+    async function sowInteraction(userMessage, sow, intake, interactionType, onResponse) {
+      try {
+        console.log("💬 SOW interaction:", { interactionType, messageLength: userMessage.length });
+        const response = await fetch('/api/sow-interaction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userMessage, sow, intake, interactionType })
+        });
+
+        const data = await response.json();
+        console.log("✅ Interaction response:", data);
+
+        if (!response.ok) {
+          onResponse({ error: data.error || "Failed to process interaction" });
+          return;
+        }
+
+        onResponse(data);
+      } catch (err) {
+        console.error("❌ Interaction error:", err);
+        onResponse({ error: err.message });
+      }
     }
 
-    function Good({ children }) {
-      return <div style={{ marginTop: 16, background: "#EAF6EC", borderLeft: `4px solid #16A34A`, borderRadius: 6, padding: "12px 16px", fontSize: 14, color: "#14532D" }}>{children}</div>;
+    async function generateMilestoneReport(milestoneKey, milestoneName, sow, intake, onReport) {
+      try {
+        console.log("🎯 REPORT REQUEST:", { milestoneKey, milestoneName });
+        console.log("📋 Input data:", { 
+          sowLength: JSON.stringify(sow).length,
+          intakeKeys: Object.keys(intake)
+        });
+
+        const response = await fetch('/api/generate-milestone-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ milestoneKey, milestoneName, sow, intake })
+        });
+
+        console.log("📡 HTTP Response status:", response.status);
+        const data = await response.json();
+        console.log("📦 FULL RESPONSE RECEIVED:", JSON.stringify(data, null, 2));
+
+        if (!response.ok) {
+          console.error("❌ SERVER ERROR:", data.error);
+          onReport({ error: data.error || "Server error" });
+          return;
+        }
+
+        if (data.success && data.report) {
+          console.log("✅ REPORT SUCCESS. Sections:", data.report.sections.length, "Recommendations:", data.report.recommendations.length);
+          onReport(data.report);
+        } else {
+          console.error("❌ INVALID RESPONSE STRUCTURE:", data);
+          onReport({ error: "Invalid response structure" });
+        }
+      } catch (err) {
+        console.error("❌ FETCH ERROR:", err.message, err.stack);
+        onReport({ error: `Network error: ${err.message}` });
+      }
     }
 
-    function StepHeader({ n, title, sub }) {
-      return (
-        <div style={{ marginBottom: 22 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: GOLD, letterSpacing: ".08em", marginBottom: 6 }}>STEP {n}</div>
-          <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 24, margin: 0 }}>{title}</h2>
-          {sub && <p style={{ color: "#5A6B7C", fontSize: 14.5, marginTop: 8, lineHeight: 1.65 }}>{sub}</p>}
-        </div>
-      );
-    }
+    // ============ VIEWS ============
 
     function LoginView({ onLogin }) {
-      const [email, setEmail] = useState("demo@marketedge.com");
-      const [pw, setPw] = useState("Strategy2026");
-      const [err, setErr] = useState("");
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
 
-      const tryLogin = () => {
-        if (email.trim().toLowerCase() === "demo@marketedge.com" && pw === "Strategy2026") {
-          onLogin({ email, name: "Demo Founder" });
+      const handleLogin = () => {
+        if (email === 'demo@marketedge.com' && password === 'Strategy2026') {
+          onLogin();
         } else {
-          setErr("Invalid credentials. Use demo@marketedge.com / Strategy2026");
+          alert('Invalid credentials. Use demo@marketedge.com / Strategy2026');
         }
       };
 
       return (
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-          <div style={{ flex: "1 1 46%", background: NAVY, color: "#fff", padding: "56px 52px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <Logo light />
-            <div>
-              <h1 style={{ fontFamily: "Fraunces, serif", fontSize: 40, fontWeight: 600, lineHeight: 1.2, margin: 0 }}>
-                Your strategy consultant.<br />
-                <span style={{ color: GOLD }}>On demand.</span>
-              </h1>
-              <p style={{ fontSize: 16, color: "#B9C6D3", marginTop: 18, lineHeight: 1.7 }}>
-                MarketEdge runs a full consulting engagement — customer intelligence, competitor landscape, market sizing, financials, business plan and pitch deck.
-              </p>
-            </div>
-            <div style={{ fontSize: 13, color: "#7A8CA0" }}>Built on 13+ years of real consulting engagements.</div>
+        <div className="view">
+          <h1>MarketEdge</h1>
+          <p className="subtitle">AI-Native Strategy Portal</p>
+          <div className="card">
+            <h2>Login</h2>
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button onClick={handleLogin}>Login</button>
+            <p style={{ fontSize: '13px', marginTop: '16px', color: '#666' }}>
+              Demo: demo@marketedge.com / Strategy2026
+            </p>
           </div>
+        </div>
+      );
+    }
 
-          <div style={{ flex: "1 1 54%", display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
-            <div style={{ width: "100%", maxWidth: 400 }}>
-              <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 28, marginBottom: 26 }}>Sign in</h2>
-              <Field label="Email">
-                <input value={email} onChange={e => { setEmail(e.target.value); setErr(""); }} style={inputStyle} />
-              </Field>
-              <Field label="Password">
-                <input type="password" value={pw} onChange={e => { setPw(e.target.value); setErr(""); }} style={inputStyle} onKeyDown={e => e.key === "Enter" && tryLogin()} />
-              </Field>
-              {err && <div style={{ color: "#B42318", fontSize: 13.5, marginBottom: 14 }}>{err}</div>}
-              <Btn onClick={tryLogin} style={{ width: "100%" }}>Sign in</Btn>
-              <div style={{ marginTop: 30, background: "#FEF6E4", border: `1px solid ${GOLD}`, borderRadius: 10, padding: "14px 18px", fontSize: 13.5, color: "#6B5310" }}>
-                <strong>Demo access</strong> — email <code style={{ fontWeight: 600 }}>demo@marketedge.com</code>, password <code style={{ fontWeight: 600 }}>Strategy2026</code>
+    function BusinessSelectorView({ onSelectBusiness, onCreateBusiness }) {
+      const profiles = storage.getProfiles();
+
+      return (
+        <div className="view">
+          <h1>MarketEdge</h1>
+          <p className="subtitle">Select or Create a Business Strategy</p>
+          
+          <div className="grid">
+            {profiles.businesses.map((business) => (
+              <div key={business.id} className="business-card" onClick={() => onSelectBusiness(business.id)}>
+                <h3>{business.name}</h3>
+                <p>Stage: {business.stage || 'Not started'}</p>
+                <p>Created: {new Date(business.createdAt).toLocaleDateString()}</p>
               </div>
-            </div>
+            ))}
           </div>
+
+          {profiles.businesses.length < 2 && (
+            <div className="card">
+              <h2>New Business</h2>
+              <input id="newBusinessName" type="text" placeholder="Business Name" />
+              <button onClick={() => {
+                const name = document.getElementById('newBusinessName').value;
+                if (name.trim()) {
+                  onCreateBusiness(name);
+                  document.getElementById('newBusinessName').value = '';
+                } else {
+                  alert('Enter a business name');
+                }
+              }}>Create</button>
+            </div>
+          )}
         </div>
       );
     }
 
-    function BusinessSelectorView({ user, onSelectBusiness, onLogout }) {
-      const [businesses, setBusinesses] = useState([]);
-      const [newName, setNewName] = useState("");
-
-      useEffect(() => {
-        const data = storage.getProfiles();
-        setBusinesses(data.businesses);
-      }, []);
-
-      const addBusiness = () => {
-        if (!newName.trim() || businesses.length >= 2) return;
-        const newBusiness = {
-          id: Date.now().toString(),
-          name: newName,
-          createdAt: new Date().toISOString(),
-          stage: "intake",
-          intake: null,
-          sow: null,
-          milestones: [],
-          sowFeedback: [],
-          currentMilestoneIndex: 0,
-        };
-        const updated = { businesses: [...businesses, newBusiness] };
-        storage.saveProfiles(updated);
-        storage.setCurrentBusinessId(newBusiness.id);
-        setBusinesses([...businesses, newBusiness]);
-        setNewName("");
-      };
-
-      const selectBusiness = (id) => {
-        storage.setCurrentBusinessId(id);
-        const business = businesses.find(b => b.id === id);
-        onSelectBusiness(business);
-      };
-
+    function ProgressSidebar({ currentStep, onStepClick, allSteps }) {
       return (
-        <div>
-          <div style={{ background: "#fff", borderBottom: "1px solid #E5EAEF", padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Logo />
-            <Btn variant="subtle" small onClick={onLogout}>Sign out</Btn>
-          </div>
-          <div style={{ maxWidth: 980, margin: "0 auto", padding: "44px 32px" }}>
-            <h1 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 32, margin: 0 }}>Your Business Ideas</h1>
-            <p style={{ color: "#5A6B7C", fontSize: 15, marginTop: 8, marginBottom: 32 }}>Work on up to 2 business ideas. All progress is saved automatically.</p>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 24 }}>
-              {businesses.map(b => (
-                <div key={b.id} style={{ background: "#F7FAF9", border: "1.5px solid #DCE7E4", borderRadius: 12, padding: 24 }}>
-                  <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 18, margin: "0 0 12px 0" }}>{b.name}</h3>
-                  <div style={{ fontSize: 13, color: "#8A94A6", marginBottom: 16 }}>
-                    Status: <strong>{b.stage === "intake" ? "Intake" : b.stage === "sow_review" ? "SOW Review" : b.stage === "milestones" ? "In Analysis" : "Complete"}</strong>
-                  </div>
-                  <Btn onClick={() => selectBusiness(b.id)} style={{ width: "100%" }}>Open</Btn>
-                </div>
-              ))}
-
-              {businesses.length < 2 && (
-                <Card style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: 200 }}>
-                  <input 
-                    type="text"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                    placeholder="Business name"
-                    style={{ ...inputStyle, marginBottom: 12 }}
-                    onKeyDown={e => e.key === "Enter" && addBusiness()}
-                  />
-                  <Btn onClick={addBusiness} disabled={!newName.trim()}>+ Add Business</Btn>
-                </Card>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    function ProgressSidebar({ stage, sow, currentMilestoneIndex, onStepClick }) {
-      const steps = [
-        { id: "intake", label: "Intake", completed: stage !== "intake" },
-        { id: "sow_review", label: "Scope of Work", completed: stage !== "intake" && stage !== "sow_review" },
-      ];
-
-      if (sow?.milestones) {
-        sow.milestones.forEach((m, i) => {
-          steps.push({
-            id: `milestone-${i}`,
-            label: m.name,
-            completed: stage === "complete" || (stage === "milestones" && currentMilestoneIndex > i),
-            indent: true
-          });
-        });
-      }
-
-      return (
-        <div style={{ width: 280, background: "#F7FAF9", borderRight: "1px solid #DCE7E4", padding: 24, overflowY: "auto", maxHeight: "100vh" }}>
-          <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 14, marginBottom: 20 }}>Project Progress</h3>
-          {steps.map(step => (
+        <div className="sidebar">
+          <h3>Progress</h3>
+          {allSteps.map((step, idx) => (
             <div
-              key={step.id}
-              onClick={() => onStepClick(step.id)}
-              style={{
-                padding: "12px 14px",
-                marginBottom: 8,
-                borderRadius: 8,
-                background: step.completed ? "#EAF6EC" : "#fff",
-                border: `1.5px solid ${step.completed ? "#16A34A" : "#D5DBE3"}`,
-                cursor: "pointer",
-                fontSize: 13.5,
-                color: step.completed ? "#14532D" : NAVY,
-                fontWeight: step.completed ? 600 : 500,
-                marginLeft: step.indent ? 16 : 0,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-              }}
+              key={step.key}
+              className={`sidebar-step ${step.completed ? 'completed' : ''} ${currentStep === step.key ? 'active' : ''}`}
+              onClick={() => onStepClick(step.key)}
             >
-              <span style={{ fontSize: 16 }}>{step.completed ? "✓" : "○"}</span>
               {step.label}
             </div>
           ))}
@@ -336,611 +662,457 @@
       );
     }
 
-    function IntakeStep({ profile, update }) {
-      const [brief, setBrief] = useState(profile.intake?.brief || "");
-      const [industry, setIndustry] = useState(profile.intake?.industry || "");
-      const [stg, setStg] = useState(profile.intake?.stage || "");
-      const [market, setMarket] = useState(profile.intake?.market || "");
-      const [goal, setGoal] = useState(profile.intake?.goal || "");
-      const [loading, setLoading] = useState(false);
-      const [err, setErr] = useState("");
+    function IntakeStep({ onComplete, initialIntake }) {
+      const [intake, setIntake] = useState(initialIntake || {
+        brief: '',
+        industry: '',
+        stage: 'Early Stage',
+        market: 'US',
+        goal: 'Growth'
+      });
       const [recording, setRecording] = useState(false);
-      const [recognition, setRecognition] = useState(null);
+      const [generating, setGenerating] = useState(false);
+      const recognitionRef = useRef(null);
 
       useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
-          const rec = new SpeechRecognition();
-          rec.continuous = true;
-          rec.interimResults = true;
-          rec.onresult = (event) => {
-            let transcript = "";
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-              transcript += event.results[i][0].transcript + " ";
-            }
-            if (event.results[event.results.length - 1].isFinal) {
-              setBrief(prev => prev + " " + transcript);
-            }
+          recognitionRef.current = new SpeechRecognition();
+          recognitionRef.current.onresult = (event) => {
+            const transcript = Array.from(event.results)
+              .map((result) => result[0].transcript)
+              .join('');
+            setIntake(prev => ({ ...prev, brief: prev.brief + ' ' + transcript }));
           };
-          rec.onerror = () => setErr("Microphone error. Please try again.");
-          setRecognition(rec);
+          recognitionRef.current.onend = () => setRecording(false);
         }
       }, []);
 
-      const toggleMicrophone = () => {
-        if (!recognition) return;
+      const handleMic = () => {
         if (recording) {
-          recognition.stop();
+          recognitionRef.current?.stop();
           setRecording(false);
         } else {
-          setBrief("");
-          recognition.start();
+          recognitionRef.current?.start();
           setRecording(true);
         }
       };
 
-      const generateSOWClick = async () => {
-        if (brief.trim().length < 60) { setErr("Tell us more — at least a few sentences."); return; }
-        if (!industry || !stg || !market || !goal) { setErr("Please answer all four dropdowns."); return; }
-        setErr(""); setLoading(true);
-        try {
-          const intake = { brief, industry, stage: stg, market, goal };
-          const res = await fetch('/api/generate-sow', {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(intake),
-          });
-          if (!res.ok) throw new Error(await res.text());
-          const data = await res.json();
-          update({ intake, sow: data.sow, stage: "sow_review" });
-        } catch (e) {
-          setErr(`Error: ${e.message}`);
-        }
-        setLoading(false);
-      };
-
-      if (loading) return <Card><Spinner label="Generating your scope of work…" /></Card>;
-
-      return (
-        <Card>
-          <StepHeader n={1} title="Tell us everything about your business" sub="Write freely or use the microphone — your idea, market, numbers, constraints, goals." />
-          <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-            <textarea value={brief} onChange={e => { setBrief(e.target.value); setErr(""); }} rows={9} placeholder="We're building a compliance-first AI platform for mid-size food manufacturers..." style={{ ...inputStyle, resize: "vertical", lineHeight: 1.65, fontSize: 14.5, flex: 1 }} />
-            {recognition && (
-              <Btn 
-                onClick={toggleMicrophone}
-                variant={recording ? "success" : "subtle"}
-                style={{ height: 44, alignSelf: "flex-start", padding: "0 16px", display: "flex", alignItems: "center", gap: 8 }}
-              >
-                {recording ? "🎤 Recording…" : "🎤"}
-              </Btn>
-            )}
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginTop: 20 }}>
-            <ComboSelect label="Industry" value={industry} onChange={setIndustry} options={INDUSTRIES} />
-            <Select label="Business stage" value={stg} onChange={setStg} options={STAGES} />
-            <Select label="Target market" value={market} onChange={setMarket} options={MARKETS} />
-            <Select label="Primary goal" value={goal} onChange={setGoal} options={GOALS} />
-          </div>
-          {err && <Warn>{err}</Warn>}
-          <div style={{ marginTop: 24 }}><Btn onClick={generateSOWClick}>Generate my scope of work</Btn></div>
-        </Card>
-      );
-    }
-
-    function SOWStep({ profile, update }) {
-      const [message, setMessage] = useState("");
-      const [loading, setLoading] = useState(false);
-      const [err, setErr] = useState("");
-      const [chat, setChat] = useState([]);
-      const sow = profile.sow;
-
-      const isApproval = (t) => /^(yes|approved?|looks good|go ahead|confirm|ok|perfect)\b/i.test(t.trim());
-
-      const approveDirectly = () => {
-        setChat([...chat, { type: "user", text: "Yes, approved!" }, { type: "system", text: "✓ Scope approved! Moving to analysis." }]);
-        update({ stage: "milestones", currentMilestoneIndex: 0 });
-      };
-
-      const send = async () => {
-        if (!message.trim()) { setErr("Please type a message."); return; }
-        setErr("");
-        
-        const userMsg = message.trim();
-        
-        if (isApproval(userMsg)) {
-          setChat([...chat, { type: "user", text: userMsg }, { type: "system", text: "✓ Scope approved! Moving to analysis." }]);
-          update({ stage: "milestones", currentMilestoneIndex: 0 });
+      const handleGenerate = () => {
+        if (!intake.brief.trim()) {
+          alert('Please enter a brief description');
           return;
         }
-
-        const updatedChat = [...chat, { type: "user", text: userMsg }];
-        setChat(updatedChat);
-        setMessage("");
-        setLoading(true);
-
-        try {
-          const isQuestion = /^(what|where|how|does|can|will|is|do|when|which)\s/i.test(userMsg) || userMsg.includes("?");
-          const interactionType = isQuestion ? "question" : "revision";
-
-          const res = await fetch('/api/sow-interaction', {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userMessage: userMsg,
-              sow,
-              intake: profile.intake,
-              interactionType,
-            }),
-          });
-
-          if (!res.ok) throw new Error(await res.text());
-          const data = await res.json();
-
-          if (data.type === "answer") {
-            setChat([...updatedChat, { type: "assistant", text: data.response }]);
-          } else if (data.type === "revision") {
-            const changesSummary = data.sow.changes_made || "Scope updated";
-            const newMilestonesStr = data.sow.milestones.map((m, i) => `${i + 1}. ${m.name}`).join(", ");
-            const assistantMsg = `✓ ${changesSummary}\n\nRevised milestones: ${newMilestonesStr}\n\nDoes this look good? Type 'Yes' to approve or describe further changes.`;
-            
-            setChat([...updatedChat, { type: "assistant", text: assistantMsg }]);
-            update({ sow: data.sow, sowFeedback: [...(profile.sowFeedback || []), userMsg] });
-          }
-        } catch (e) {
-          setErr(`Error: ${e.message}`);
-          setChat(updatedChat);
-        }
-        setLoading(false);
+        setGenerating(true);
+        generateSOW(intake, (sow) => {
+          setGenerating(false);
+          onComplete(intake, sow);
+        });
       };
 
       return (
-        <Card>
-          <StepHeader n={2} title="Our scope of work" sub="We've designed this engagement for you. Review, ask questions, request changes, or approve." />
-          
-          <div style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: "18px 22px", fontSize: 14.5, color: "#25384A", lineHeight: 1.7, marginBottom: 24 }}>
-            <strong>Our approach:</strong> {sow.engagement_summary.replace(/The /g, "We ").replace(/They /g, "You ")}
-          </div>
+        <div className="view">
+          <h2>Business Intake</h2>
+          <p style={{ marginBottom: '16px', color: '#666' }}>Tell us about your business, and we'll generate your engagement scope.</p>
 
-          <div style={{ marginBottom: 24, paddingBottom: 24, borderBottom: "1px solid #EDF1F4" }}>
-            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>What we'll deliver ({sow.milestones.length} milestones)</h3>
-            {sow.milestones.map((m, i) => (
-              <div key={m.key + i} style={{ display: "flex", gap: 12, padding: "10px 0", fontSize: 13.5, color: "#5A6B7C" }}>
-                <span style={{ fontWeight: 600, color: NAVY, minWidth: 24 }}>{i + 1}.</span>
-                <span><strong>{m.name}</strong> — {m.rationale.replace(/The /g, "We ").replace(/They /g, "You ")}</span>
-              </div>
-            ))}
-          </div>
+          <div className="card">
+            <label>Brief Description</label>
+            <textarea
+              value={intake.brief}
+              onChange={(e) => setIntake({ ...intake, brief: e.target.value })}
+              placeholder="Describe your business, market, and strategy goals..."
+            />
+            <button className="mic-button" onClick={handleMic} disabled={generating}>
+              {recording ? '🎤 Recording...' : '🎤 Voice'}
+            </button>
 
-          <div style={{ marginBottom: 24 }}>
-            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Conversation</h3>
-            <div style={{ background: "#FAFBFC", borderRadius: 10, padding: 16, minHeight: 120, maxHeight: 300, overflowY: "auto", marginBottom: 16 }}>
-              {chat.length === 0 ? (
-                <div style={{ color: "#8A94A6", fontSize: 14, textAlign: "center", paddingTop: 20 }}>Ask questions or request changes here...</div>
-              ) : (
-                chat.map((msg, i) => (
-                  <div key={i} style={{ marginBottom: 14, display: "flex", justifyContent: msg.type === "user" ? "flex-end" : "flex-start" }}>
-                    <div style={{
-                      maxWidth: "80%",
-                      padding: "10px 14px",
-                      borderRadius: 8,
-                      background: msg.type === "user" ? TEAL : msg.type === "system" ? "#EAF6EC" : "#E8F2FF",
-                      color: msg.type === "user" ? "#fff" : msg.type === "system" ? "#14532D" : NAVY,
-                      fontSize: 14,
-                      lineHeight: 1.5,
-                      wordWrap: "break-word",
-                      whiteSpace: "pre-wrap"
-                    }}>
-                      {msg.text}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+            <label style={{ marginTop: '20px' }}>Industry</label>
+            <ComboSelect
+              value={intake.industry}
+              onChange={(ind) => setIntake({ ...intake, industry: ind })}
+              options={INDUSTRIES}
+              placeholder="Select or type industry"
+            />
 
-          <div style={{ marginBottom: 24, borderTop: "1px solid #EDF1F4", paddingTop: 20 }}>
-            <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 16, marginBottom: 12 }}>Ask or Revise</h3>
-            <Field label="">
-              <textarea 
-                value={message} 
-                onChange={e => { setMessage(e.target.value); setErr(""); }} 
-                rows={3} 
-                placeholder="Ask: 'Where do you cover pricing?' or Revise: 'Add financial analysis' or Approve: 'Yes'" 
-                style={{ ...inputStyle, resize: "vertical" }} 
-                disabled={loading}
-              />
-            </Field>
-            {err && <Warn>{err}</Warn>}
-            <Btn onClick={send} disabled={loading}>{loading ? "Processing..." : "Send"}</Btn>
-          </div>
+            <label>Stage</label>
+            <select value={intake.stage} onChange={(e) => setIntake({ ...intake, stage: e.target.value })}>
+              <option>Early Stage</option>
+              <option>Growth</option>
+              <option>Scale</option>
+              <option>Mature</option>
+            </select>
 
-          <div style={{ borderTop: "1px solid #EDF1F4", paddingTop: 20 }}>
-            <Btn 
-              onClick={approveDirectly}
-              style={{ width: "100%" }}
-            >
-              ✓ Approve & Move to Analysis
-            </Btn>
+            <label>Market</label>
+            <select value={intake.market} onChange={(e) => setIntake({ ...intake, market: e.target.value })}>
+              <option>US</option>
+              <option>Europe</option>
+              <option>Asia</option>
+              <option>Global</option>
+            </select>
+
+            <label>Primary Goal</label>
+            <select value={intake.goal} onChange={(e) => setIntake({ ...intake, goal: e.target.value })}>
+              <option>Growth</option>
+              <option>Profitability</option>
+              <option>Market Entry</option>
+              <option>Product Expansion</option>
+            </select>
+
+            <button onClick={handleGenerate} disabled={generating}>
+              {generating ? '⏳ Generating...' : '✨ Generate SOW'}
+            </button>
           </div>
-        </Card>
+        </div>
       );
     }
 
-        function MilestoneStep({ profile, update }) {
-      const sow = profile.sow;
-      const currentIndex = profile.currentMilestoneIndex || 0;
-      const currentMilestone = sow.milestones[currentIndex];
-      const totalMilestones = sow.milestones.length;
-      const [report, setReport] = useState(null);
+    function SOWStep({ sow, intake, onApprove, onRevision }) {
+      const [messages, setMessages] = useState([
+        { type: 'system', text: 'Scope of Work generated. Review and ask questions or request changes.' }
+      ]);
+      const [input, setInput] = useState('');
       const [loading, setLoading] = useState(false);
-      const [err, setErr] = useState("");
 
-      useEffect(() => {
-        generateReport();
-      }, [currentIndex]);
+      const handleSend = () => {
+        if (!input.trim()) return;
 
-      const generateReport = async () => {
+        setMessages(prev => [...prev, { type: 'user', text: input }]);
         setLoading(true);
-        try {
-          const res = await fetch('/api/generate-milestone-report', {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              milestoneKey: currentMilestone.key,
-              milestoneName: currentMilestone.name,
-              sow,
-              intake: profile.intake,
-            }),
-          });
-          if (!res.ok) throw new Error(await res.text());
-          const data = await res.json();
-          setReport(data.report);
-        } catch (e) {
-          setErr(`Error generating report: ${e.message}`);
-        }
-        setLoading(false);
+
+        const interactionType = /^(yes|approved|approve|ok|looks good)/i.test(input.trim()) ? 'approval' : 'question';
+
+        sowInteraction(input, sow, intake, interactionType, (response) => {
+          setLoading(false);
+
+          if (response.error) {
+            setMessages(prev => [...prev, { type: 'assistant', text: `Error: ${response.error}` }]);
+            return;
+          }
+
+          if (response.type === 'answer') {
+            setMessages(prev => [...prev, { type: 'assistant', text: response.response }]);
+          } else if (response.type === 'revision') {
+            const newSOW = response.sow;
+            setMessages(prev => [...prev, { type: 'system', text: `Changes made: ${response.changes_made || 'SOW updated'}` }]);
+            setMessages(prev => [...prev, { type: 'assistant', text: `Updated milestones:\n${newSOW.milestones.map((m, i) => `${i + 1}. ${m.name}`).join('\n')}\n\nApprove these changes?` }]);
+            onRevision(newSOW);
+          }
+
+          setInput('');
+        });
       };
 
+      const handleApprove = () => {
+        setMessages(prev => [...prev, { type: 'system', text: '✅ SOW approved. Moving to milestones...' }]);
+        setTimeout(() => onApprove(), 1000);
+      };
+
+      return (
+        <div className="view">
+          <h2>Scope of Work</h2>
+          <div className="card">
+            <h3>Engagement Summary</h3>
+            <p>{sow.engagement_summary}</p>
+          </div>
+
+          <div className="card">
+            <h3>Milestones</h3>
+            <ul className="milestone-list">
+              {sow.milestones.map((m, i) => (
+                <li key={i}>{i + 1}. {m.name}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="chat-container">
+            {messages.map((msg, idx) => (
+              <div key={idx} className={`chat-message ${msg.type}`}>
+                {msg.text}
+              </div>
+            ))}
+            {loading && <div className="loading"><div className="spinner"></div></div>}
+          </div>
+
+          <div className="chat-input">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+              placeholder="Ask a question or request changes..."
+            />
+            <button onClick={handleSend} disabled={loading}>Send</button>
+          </div>
+
+          <button className="secondary" onClick={handleApprove} style={{ marginTop: '20px' }}>
+            ✅ Approve SOW
+          </button>
+        </div>
+      );
+    }
+
+    function MilestoneStep({ milestone, sow, intake, onNext, onPrev, isLast }) {
+      const [report, setReport] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        console.log("🎯 MilestoneStep mounted for:", milestone.key);
+        setLoading(true);
+        setError(null);
+        generateMilestoneReport(milestone.key, milestone.name, sow, intake, (result) => {
+          setLoading(false);
+          if (result.error) {
+            console.error("Report error:", result.error);
+            setError(result.error);
+            setReport(null);
+          } else {
+            console.log("Report loaded successfully");
+            setReport(result);
+          }
+        });
+      }, [milestone.key, sow, intake]);
+
       const downloadPDF = () => {
-        if (!report) return;
         const element = document.getElementById('full-report-pdf');
-        const opt = {
-          margin: [15, 15, 20, 15],
-          filename: `MarketEdge-${report.title}-Full-Report.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true },
-          jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
-        };
-        html2pdf().set(opt).from(element).save();
+        if (element) {
+          html2pdf().set({ margin: 10, filename: `${milestone.name}.pdf` }).save(element);
+        }
       };
 
       const printReport = () => {
-        const element = document.getElementById('full-report-pdf');
-        const printWindow = window.open('', '', 'width=900,height=1200');
+        if (!report) return;
+        const printWindow = window.open('', '', 'width=900,height=600');
         printWindow.document.write(`
-          <!DOCTYPE html>
           <html>
-          <head>
-            <meta charset="utf-8">
-            <style>
-              * { margin: 0; padding: 0; }
-              body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; line-height: 1.6; color: #333; }
-              .page { page-break-after: always; padding: 40px 30px; }
-              h1 { font-size: 28px; margin-bottom: 20px; color: #102A43; }
-              h2 { font-size: 18px; margin-top: 30px; margin-bottom: 15px; color: #102A43; border-bottom: 2px solid #102A43; padding-bottom: 10px; }
-              h3 { font-size: 16px; margin-top: 20px; margin-bottom: 10px; color: #0F766E; }
-              p { margin-bottom: 12px; text-align: justify; }
-              ul { margin-left: 20px; margin-bottom: 15px; }
-              li { margin-bottom: 8px; }
-              .header { text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #102A43; }
-              .logo { font-size: 24px; margin-bottom: 20px; }
-              .footer { text-align: center; font-size: 11px; color: #999; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; }
-              .toc { margin-bottom: 40px; }
-              .toc-item { margin-bottom: 8px; padding-left: 20px; }
-            </style>
-          </head>
-          <body>
-            ${element.innerHTML}
-          </body>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; padding: 20px; }
+                h1 { color: #102A43; }
+                h2 { color: #0F766E; margin-top: 30px; }
+                p { line-height: 1.6; }
+              </style>
+            </head>
+            <body>
+              <h1>${report.title}</h1>
+              ${report.sections.map(s => `<h2>${s.heading}</h2><p>${s.content}</p>`).join('')}
+            </body>
           </html>
         `);
         printWindow.document.close();
-        setTimeout(() => printWindow.print(), 250);
+        printWindow.print();
       };
 
       return (
-        <Card>
-          <StepHeader 
-            n={3} 
-            title={`${currentMilestone.name}`}
-            sub={`Milestone ${currentIndex + 1} of ${totalMilestones}`}
-          />
-          
-          {loading && <Spinner label="Generating comprehensive analysis report…" />}
+        <div className="view">
+          <div className="report-banner">📊 {milestone.name}</div>
 
-          {report && !loading && (
+          {loading && <div className="loading"><div className="spinner"></div> Generating report...</div>}
+
+          {error && <div className="error">Error: {error}</div>}
+
+          {report && (
             <>
-              {/* Snapshot Label */}
-              <div style={{ background: "#FEF6E4", border: `2px solid ${GOLD}`, borderRadius: 10, padding: 16, marginBottom: 24 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: GOLD, marginBottom: 8 }}>📄 SNAPSHOT OF {report.title.toUpperCase()} REPORT</div>
-                <p style={{ fontSize: 13, color: "#6B5310", margin: 0 }}>This is a preview of the complete analysis. Download the full professional report (15-20+ pages) below for comprehensive details, strategic recommendations, and detailed implementation guidance.</p>
-              </div>
-
-              {/* Full PDF Report (Hidden) */}
-              <div id="full-report-pdf" style={{ display: "none", background: "#fff", color: "#333" }}>
-                {/* Create multiple pages with header/footer */}
-                {report.sections && report.sections.map((section, pageIndex) => (
-                  <div key={pageIndex} style={{ pageBreakAfter: "always", padding: "40px 30px", position: "relative" }}>
-                    {/* Header with Logo on each page */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30, paddingBottom: 15, borderBottom: "1px solid #ddd", fontSize: 11, color: "#999" }}>
-                      <div>
-                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#102A43" }}>Market</span>
-                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#C9A227" }}>Edge</span>
-                      </div>
-                      <div>{report.title}</div>
-                      <div>Page {pageIndex + 1}</div>
-                    </div>
-
-                    {/* Page Content */}
-                    {pageIndex === 0 && (
-                      <>
-                        <div style={{ textAlign: "center", marginBottom: 60 }}>
-                          <div style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 32, color: "#102A43", marginBottom: 10 }}>{report.title}</div>
-                          <div style={{ fontSize: 16, color: "#0F766E", marginBottom: 5 }}>Strategic Analysis Report</div>
-                          <div style={{ fontSize: 12, color: "#999", marginTop: 20 }}>Generated by MarketEdge</div>
-                          <div style={{ fontSize: 12, color: "#999" }}>{ new Date().toLocaleDateString()}</div>
-                        </div>
-                        
-                        {section.heading && (
-                          <>
-                            <div style={{ fontSize: 18, fontWeight: 600, color: "#102A43", marginBottom: 15, borderBottom: "2px solid #102A43", paddingBottom: 10 }}>
-                              {section.heading}
-                            </div>
-                            <div style={{ fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", color: "#333" }}>
-                              {section.content}
-                            </div>
-                          </>
-                        )}
-                      </>
-                    )}
-
-                    {pageIndex > 0 && (
-                      <>
-                        {section.heading && (
-                          <div style={{ fontSize: 18, fontWeight: 600, color: "#102A43", marginBottom: 15, borderBottom: "2px solid #102A43", paddingBottom: 10 }}>
-                            {section.heading}
-                          </div>
-                        )}
-                        <div style={{ fontSize: 13, lineHeight: 1.8, whiteSpace: "pre-wrap", color: "#333" }}>
-                          {section.content}
-                        </div>
-                      </>
-                    )}
-
-                    {/* Footer on each page */}
-                    <div style={{ marginTop: 50, paddingTop: 15, borderTop: "1px solid #ddd", fontSize: 10, color: "#999", textAlign: "center" }}>
-                      <div>MarketEdge Strategic Analysis Report</div>
-                      <div style={{ marginTop: 5 }}>Confidential - For internal use only</div>
-                    </div>
-                  </div>
-                ))}
-
-                {/* Recommendations Page */}
-                {report.recommendations && report.recommendations.length > 0 && (
-                  <div style={{ pageBreakAfter: "always", padding: "40px 30px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30, paddingBottom: 15, borderBottom: "1px solid #ddd", fontSize: 11, color: "#999" }}>
-                      <div>
-                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#102A43" }}>Market</span>
-                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#C9A227" }}>Edge</span>
-                      </div>
-                      <div>{report.title}</div>
-                      <div>Page {(report.sections?.length || 0) + 1}</div>
-                    </div>
-
-                    <div style={{ fontSize: 18, fontWeight: 600, color: "#102A43", marginBottom: 15, borderBottom: "2px solid #102A43", paddingBottom: 10 }}>
-                      Strategic Recommendations
-                    </div>
-                    <ul style={{ paddingLeft: 20, color: "#333", fontSize: 13, lineHeight: 1.8 }}>
-                      {report.recommendations.map((r, i) => (
-                        <li key={i} style={{ marginBottom: 12 }}>{r}</li>
-                      ))}
-                    </ul>
-
-                    <div style={{ marginTop: 50, paddingTop: 15, borderTop: "1px solid #ddd", fontSize: 10, color: "#999", textAlign: "center" }}>
-                      <div>MarketEdge Strategic Analysis Report</div>
-                      <div style={{ marginTop: 5 }}>Confidential - For internal use only</div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Success Metrics Page */}
-                {report.metrics && report.metrics.length > 0 && (
-                  <div style={{ padding: "40px 30px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30, paddingBottom: 15, borderBottom: "1px solid #ddd", fontSize: 11, color: "#999" }}>
-                      <div>
-                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#102A43" }}>Market</span>
-                        <span style={{ fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 16, color: "#C9A227" }}>Edge</span>
-                      </div>
-                      <div>{report.title}</div>
-                      <div>Page {(report.sections?.length || 0) + 2}</div>
-                    </div>
-
-                    <div style={{ fontSize: 18, fontWeight: 600, color: "#102A43", marginBottom: 15, borderBottom: "2px solid #102A43", paddingBottom: 10 }}>
-                      Success Metrics & KPIs
-                    </div>
-                    <ul style={{ paddingLeft: 20, color: "#333", fontSize: 13, lineHeight: 1.8 }}>
-                      {report.metrics.map((m, i) => (
-                        <li key={i} style={{ marginBottom: 12 }}>{m}</li>
-                      ))}
-                    </ul>
-
-                    <div style={{ marginTop: 50, paddingTop: 15, borderTop: "1px solid #ddd", fontSize: 10, color: "#999", textAlign: "center" }}>
-                      <div>MarketEdge Strategic Analysis Report</div>
-                      <div style={{ marginTop: 5 }}>Confidential - For internal use only</div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Snapshot Preview (On Screen) */}
-              <div style={{ background: "#F7FAF9", border: "1px solid #DCE7E4", borderRadius: 10, padding: 24, marginBottom: 24 }}>
-                <h3 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 18, marginBottom: 16 }}>Report Snapshot Preview</h3>
-                
-                {report.sections && report.sections.slice(0, 3).map((section, i) => (
-                  <div key={i} style={{ marginBottom: 20 }}>
-                    <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 14, marginBottom: 10, borderBottom: "1px solid #DCE7E4", paddingBottom: 6 }}>{section.heading}</h4>
-                    <p style={{ color: "#5A6B7C", lineHeight: 1.6, fontSize: 13, marginBottom: 0 }}>
-                      {section.content.substring(0, 300).replace(/\n/g, " ")}...
-                    </p>
+              <div className="report-section">
+                <h3>{report.title}</h3>
+                {report.sections.slice(0, 3).map((section, idx) => (
+                  <div key={idx} style={{ marginBottom: '16px' }}>
+                    <h4>{section.heading}</h4>
+                    <p>{section.content.substring(0, 300)}...</p>
                   </div>
                 ))}
               </div>
 
-              {/* Download & Print Buttons */}
-              <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
-                <Btn onClick={downloadPDF}>📥 Download Full Report (PDF)</Btn>
-                <Btn variant="subtle" onClick={printReport}>🖨 Print Full Report</Btn>
+              <div style={{ textAlign: 'center', margin: '20px 0' }}>
+                <button onClick={downloadPDF}>⬇️ Download PDF</button>
+                <button onClick={printReport} className="secondary">🖨️ Print</button>
               </div>
             </>
           )}
 
-          {err && <Warn>{err}</Warn>}
-
-          {/* Progress */}
-          <div style={{ marginBottom: 24, borderTop: "1px solid #EDF1F4", paddingTop: 20 }}>
-            <h4 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 14, marginBottom: 12 }}>Engagement Progress</h4>
-            {sow.milestones.map((m, i) => (
-              <div key={m.key + i} style={{ 
-                display: "flex", 
-                gap: 12, 
-                padding: "10px 0", 
-                fontSize: 13.5, 
-                color: i === currentIndex ? NAVY : "#8A94A6",
-                fontWeight: i === currentIndex ? 600 : 400,
-              }}>
-                <span>{i === currentIndex ? "→" : i < currentIndex ? "✓" : "○"}</span>
-                <span>{m.name}</span>
+          <div style={{ display: 'none' }} id="full-report-pdf">
+            <h1>{report?.title}</h1>
+            {report?.sections.map((s, i) => (
+              <div key={i} style={{ pageBreakInside: 'avoid', marginBottom: '40px' }}>
+                <h2>{s.heading}</h2>
+                <p>{s.content}</p>
               </div>
             ))}
           </div>
 
-          {/* Navigation */}
-          <div style={{ display: "flex", gap: 12 }}>
-            {currentIndex > 0 && (
-              <Btn 
-                variant="subtle" 
-                onClick={() => update({ currentMilestoneIndex: currentIndex - 1 })}
-              >
-                ← Previous
-              </Btn>
-            )}
-            {currentIndex < totalMilestones - 1 ? (
-              <Btn 
-                onClick={() => update({ currentMilestoneIndex: currentIndex + 1 })}
-              >
-                Next Milestone →
-              </Btn>
-            ) : (
-              <Btn onClick={() => update({ stage: "complete" })}>
-                Complete Engagement
-              </Btn>
-            )}
+          <div style={{ marginTop: '30px', display: 'flex', gap: '12px' }}>
+            <button onClick={onPrev}>← Previous</button>
+            <button className="secondary" onClick={onNext}>
+              {isLast ? '✅ Complete' : 'Next →'}
+            </button>
           </div>
-        </Card>
-      );
-    }
-
-    function CompleteStep({ profile }) {
-      return (
-        <Card>
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
-            <div style={{ width: 64, height: 64, borderRadius: "50%", background: GOLD, color: NAVY, fontSize: 30, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>✓</div>
-            <h2 style={{ fontFamily: "Fraunces, serif", color: NAVY, fontSize: 28, margin: 0 }}>Engagement Complete</h2>
-            <p style={{ color: "#5A6B7C", fontSize: 15, marginTop: 10, maxWidth: 520, marginLeft: "auto", marginRight: "auto", lineHeight: 1.7 }}>
-              We've completed all milestone analysis. Your strategy book, executive summary, and complete report package are ready.
-            </p>
-            <Good>📊 All deliverables ready for download!</Good>
-          </div>
-        </Card>
-      );
-    }
-
-    function App() {
-      const [view, setView] = useState("login");
-      const [user, setUser] = useState(null);
-      const [profile, setProfile] = useState(null);
-
-      const handleLogin = (u) => {
-        setUser(u);
-        setView("business-selector");
-      };
-
-      const handleSelectBusiness = (business) => {
-        setProfile(business);
-        setView("engagement");
-      };
-
-      const handleUpdateProfile = (patch) => {
-        const updated = { ...profile, ...patch };
-        setProfile(updated);
-        
-        // Save to localStorage
-        const data = storage.getProfiles();
-        const businessIndex = data.businesses.findIndex(b => b.id === profile.id);
-        if (businessIndex >= 0) {
-          data.businesses[businessIndex] = updated;
-          storage.saveProfiles(data);
-        }
-      };
-
-      const handleLogout = () => {
-        setUser(null);
-        setProfile(null);
-        setView("login");
-      };
-
-      const handleStepClick = (stepId) => {
-        if (stepId === "intake") {
-          handleUpdateProfile({ stage: "intake" });
-        } else if (stepId === "sow_review") {
-          handleUpdateProfile({ stage: "sow_review" });
-        } else if (stepId.startsWith("milestone-")) {
-          const index = parseInt(stepId.split("-")[1]);
-          handleUpdateProfile({ stage: "milestones", currentMilestoneIndex: index });
-        }
-      };
-
-      return (
-        <div style={{ fontFamily: "Inter, sans-serif", minHeight: "100vh", background: CREAM }}>
-          <style>
-            {`@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap');
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Inter', sans-serif; background: #FAF8F3; }`}
-          </style>
-          
-          {view === "login" && <LoginView onLogin={handleLogin} />}
-          {view === "business-selector" && <BusinessSelectorView user={user} onSelectBusiness={handleSelectBusiness} onLogout={handleLogout} />}
-          
-          {view === "engagement" && profile && (
-            <div style={{ display: "flex", minHeight: "100vh" }}>
-              <ProgressSidebar 
-                stage={profile.stage}
-                sow={profile.sow}
-                currentMilestoneIndex={profile.currentMilestoneIndex}
-                onStepClick={handleStepClick}
-              />
-              <div style={{ flex: 1, padding: "36px 32px", overflowY: "auto" }}>
-                {profile.stage === "intake" && <IntakeStep profile={profile} update={handleUpdateProfile} />}
-                {profile.stage === "sow_review" && <SOWStep profile={profile} update={handleUpdateProfile} />}
-                {profile.stage === "milestones" && <MilestoneStep profile={profile} update={handleUpdateProfile} />}
-                {profile.stage === "complete" && <CompleteStep profile={profile} />}
-              </div>
-            </div>
-          )}
         </div>
       );
+    }
+
+    function CompleteStep() {
+      return (
+        <div className="view">
+          <h1>🎉 Engagement Complete</h1>
+          <div className="card">
+            <p>Your MarketEdge strategy portal has been generated. You can now:</p>
+            <ul style={{ marginLeft: '20px', marginTop: '12px' }}>
+              <li>Review all milestone reports</li>
+              <li>Download and share your Strategy Book</li>
+              <li>Schedule a follow-up consultation</li>
+            </ul>
+            <button style={{ marginTop: '20px' }}>📅 Book Follow-up Call</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ============ MAIN APP ============
+    function App() {
+      const [view, setView] = useState('login');
+      const [profile, setProfile] = useState(null);
+
+      useEffect(() => {
+        const currentBusinessId = storage.getCurrentBusinessId();
+        if (currentBusinessId) {
+          const profiles = storage.getProfiles();
+          const business = profiles.businesses.find(b => b.id === currentBusinessId);
+          if (business) {
+            setProfile(business);
+            setView('engagement');
+          }
+        }
+      }, []);
+
+      const allSteps = [
+        { key: 'intake', label: 'Intake', completed: !!profile?.intake },
+        { key: 'sow_review', label: 'SOW Review', completed: !!profile?.sow },
+        ...MILESTONE_CATALOG.map((m, i) => ({
+          key: `milestone-${i}`,
+          label: m.name,
+          completed: profile?.milestones?.[i]?.completed
+        })),
+        { key: 'complete', label: 'Complete', completed: profile?.stage === 'complete' }
+      ];
+
+      const handleUpdateProfile = (updates) => {
+        const newProfile = { ...profile, ...updates };
+        setProfile(newProfile);
+        const profiles = storage.getProfiles();
+        const idx = profiles.businesses.findIndex(b => b.id === profile.id);
+        if (idx >= 0) {
+          profiles.businesses[idx] = newProfile;
+          storage.saveProfiles(profiles);
+        }
+      };
+
+      const handleStepClick = (stepKey) => {
+        if (stepKey.startsWith('milestone-')) {
+          const idx = parseInt(stepKey.split('-')[1]);
+          handleUpdateProfile({ currentMilestoneIndex: idx });
+        }
+      };
+
+      const handleLogin = () => {
+        setView('business-selector');
+      };
+
+      const handleSelectBusiness = (businessId) => {
+        const profiles = storage.getProfiles();
+        const business = profiles.businesses.find(b => b.id === businessId);
+        if (business) {
+          setProfile(business);
+          storage.setCurrentBusinessId(businessId);
+          setView('engagement');
+        }
+      };
+
+      const handleCreateBusiness = (name) => {
+        const profiles = storage.getProfiles();
+        const newBusiness = {
+          id: Date.now().toString(),
+          name,
+          createdAt: new Date().toISOString(),
+          stage: 'intake',
+          intake: null,
+          sow: null,
+          milestones: [],
+          sowFeedback: [],
+          currentMilestoneIndex: 0
+        };
+        profiles.businesses.push(newBusiness);
+        storage.saveProfiles(profiles);
+        setProfile(newBusiness);
+        storage.setCurrentBusinessId(newBusiness.id);
+        setView('engagement');
+      };
+
+      if (view === 'login') {
+        return <LoginView onLogin={handleLogin} />;
+      }
+
+      if (view === 'business-selector') {
+        return <BusinessSelectorView onSelectBusiness={handleSelectBusiness} onCreateBusiness={handleCreateBusiness} />;
+      }
+
+      if (view === 'engagement' && profile) {
+        const currentIndex = profile.currentMilestoneIndex || 0;
+        const currentMilestone = MILESTONE_CATALOG[currentIndex];
+
+        return (
+          <div className="app-container">
+            <ProgressSidebar
+              currentStep={profile.stage === 'intake' ? 'intake' : profile.stage === 'sow_review' ? 'sow_review' : `milestone-${currentIndex}`}
+              onStepClick={handleStepClick}
+              allSteps={allSteps}
+            />
+            <div className="main-content">
+              {profile.stage === 'intake' && (
+                <IntakeStep
+                  initialIntake={profile.intake}
+                  onComplete={(intake, sow) => {
+                    handleUpdateProfile({ intake, sow, stage: 'sow_review' });
+                  }}
+                />
+              )}
+              {profile.stage === 'sow_review' && profile.sow && (
+                <SOWStep
+                  sow={profile.sow}
+                  intake={profile.intake}
+                  onRevision={(newSOW) => {
+                    handleUpdateProfile({ sow: newSOW });
+                  }}
+                  onApprove={() => {
+                    handleUpdateProfile({ stage: 'milestones', currentMilestoneIndex: 0 });
+                  }}
+                />
+              )}
+              {profile.stage === 'milestones' && currentMilestone && (
+                <MilestoneStep
+                  milestone={currentMilestone}
+                  sow={profile.sow}
+                  intake={profile.intake}
+                  onNext={() => {
+                    if (currentIndex >= MILESTONE_CATALOG.length - 1) {
+                      handleUpdateProfile({ stage: 'complete' });
+                    } else {
+                      handleUpdateProfile({ currentMilestoneIndex: currentIndex + 1 });
+                    }
+                  }}
+                  onPrev={() => {
+                    if (currentIndex > 0) {
+                      handleUpdateProfile({ currentMilestoneIndex: currentIndex - 1 });
+                    }
+                  }}
+                  isLast={currentIndex >= MILESTONE_CATALOG.length - 1}
+                />
+              )}
+              {profile.stage === 'complete' && <CompleteStep />}
+            </div>
+          </div>
+        );
+      }
+
+      return <div className="view"><p>Loading...</p></div>;
     }
 
     ReactDOM.render(<App />, document.getElementById('root'));
