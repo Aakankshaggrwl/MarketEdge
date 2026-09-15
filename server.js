@@ -329,7 +329,7 @@ METRICS: [400-500 words. 5-7 key performance indicators to track, with target ra
     const message = await client.messages.create({
   model: "claude-sonnet-5",
   max_tokens: 16000,
-  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive and detailed — this report should be long and substantive, not a summary.`,
+  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive and detailed — this report should be long and substantive, not a summary. Write in plain text only — no markdown formatting of any kind (no **bold**, no #headings, no bullet-point dashes). For inline sub-headers within a section, write the label as plain text followed by a colon, on its own line.`,
   messages: [{ role: "user", content: prompt }],
 });
 

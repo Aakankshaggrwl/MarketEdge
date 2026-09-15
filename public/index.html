@@ -250,44 +250,50 @@
 
     .report-section {
       background: white;
-      padding: 20px;
+      padding: 24px;
       margin: 16px 0;
       border-radius: 6px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      font-family: 'Calibri', 'Carlito', 'Segoe UI', Arial, sans-serif;
     }
 
     .report-section h3 {
-      color: #0F766E;
-      margin-bottom: 12px;
-      font-size: 18px;
+      color: #102A43;
+      margin-bottom: 14px;
+      font-size: 16pt;
+      font-weight: 700;
     }
 
     .report-section p {
       line-height: 1.6;
-      color: #555;
+      color: #333;
+      font-size: 11pt;
       margin-bottom: 12px;
     }
 
     .report-highlight {
-      background: linear-gradient(135deg, #0F766E 0%, #102A43 100%);
-      color: white;
-      padding: 28px;
-      border-radius: 10px;
+      background: #F7FAF9;
+      border: 1px solid #DCE7E4;
+      border-left: 4px solid #0F766E;
+      color: #1a1a1a;
+      padding: 20px 24px;
+      border-radius: 6px;
       margin: 16px 0;
     }
 
     .report-highlight h4 {
-      font-size: 13px;
+      font-size: 12pt;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #6EE7DA;
+      letter-spacing: 0.06em;
+      color: #0F766E;
       margin-bottom: 10px;
     }
 
     .report-highlight p {
-      font-size: 16px;
+      font-size: 11pt;
       line-height: 1.7;
-      color: #F0FBF9;
+      color: #25384A;
     }
 
     .snapshot-section {
@@ -298,27 +304,30 @@
 
     .snapshot-section h4 {
       color: #102A43;
-      font-size: 16px;
+      font-size: 14pt;
+      font-weight: 700;
       margin-bottom: 8px;
     }
 
     .snapshot-section p {
-      color: #555;
+      color: #333;
+      font-size: 11pt;
       line-height: 1.7;
     }
 
     .milestone-rationale {
-      color: #666;
-      font-size: 13.5px;
+      color: #444;
+      font-size: 11pt;
+      font-family: 'Calibri', 'Carlito', 'Segoe UI', Arial, sans-serif;
       line-height: 1.6;
       margin: 6px 0 0 24px;
     }
 
+    .report-highlight strong, .snapshot-section strong, .report-section strong {
+      color: #102A43;
+    }
+
     #full-report-pdf {
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: -1;
       pointer-events: none;
     }
 
@@ -953,13 +962,32 @@
         .replace(/'/g, '&#39;');
     }
 
+    // Escapes text, then converts markdown **bold** into real <strong> tags.
+    // Safe because escaping runs first — the ** that survives can't be an injected tag.
+    function formatContentHtml(str) {
+      return escapeHtml(str).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    }
+
+    // React-safe equivalent for JSX children: splits on **bold** and renders <strong>,
+    // everything else as plain text nodes (React escapes these automatically).
+    function renderFormattedText(str) {
+      if (!str) return null;
+      return String(str).split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+        part.startsWith('**') && part.endsWith('**') && part.length > 4
+          ? <strong key={i}>{part.slice(2, -2)}</strong>
+          : part
+      );
+    }
+
     // Builds a full standalone HTML document string: cover page + one page per section,
     // each carrying a running header (MarketEdge wordmark + report title) and footer
     // (confidentiality line + page label). Used for both Print and the hidden PDF-export node.
+    const REPORT_FONT = "'Calibri', 'Carlito', 'Segoe UI', Arial, sans-serif";
+
     const REPORT_STYLES = `
   @page { size: A4; margin: 0; }
   #full-report-pdf * { box-sizing: border-box; }
-  #full-report-pdf { font-family: 'Georgia', 'Times New Roman', serif; color: #1a1a1a; }
+  #full-report-pdf { font-family: ${REPORT_FONT}; color: #1a1a1a; }
   .pdf-page {
     width: 210mm;
     min-height: 297mm;
@@ -976,26 +1004,27 @@
     justify-content: center;
     text-align: center;
   }
-  .pdf-cover-wordmark { font-family: Georgia, serif; font-size: 40px; font-weight: 700; margin-bottom: 6px; }
-  .pdf-cover-tagline { font-size: 12px; letter-spacing: 3px; color: #888; margin-bottom: 90px; }
-  .pdf-cover-rule { width: 100%; max-width: 400px; border-top: 3px solid #102A43; margin-bottom: 26px; }
-  .pdf-cover-rule.light { border-top: 1px solid #ccc; margin-top: 34px; }
-  .pdf-cover-kicker { font-size: 12px; letter-spacing: 2px; color: #0F766E; font-weight: 700; margin-bottom: 10px; }
-  .pdf-cover-title { font-size: 30px; color: #102A43; font-weight: 700; max-width: 480px; margin-bottom: 10px; }
-  .pdf-cover-meta { font-size: 13px; color: #555; margin-top: 4px; }
-  .pdf-cover-meta.muted { color: #999; font-size: 12px; }
+  .pdf-cover-wordmark { font-family: ${REPORT_FONT}; font-size: 16pt; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .pdf-cover-tagline { font-size: 11pt; letter-spacing: 2.5px; color: #888; margin-bottom: 100px; }
+  .pdf-cover-rule { width: 100%; max-width: 400px; border-top: 2.5px solid #102A43; margin-bottom: 30px; }
+  .pdf-cover-rule.light { border-top: 1px solid #ccc; margin-top: 38px; }
+  .pdf-cover-kicker { font-size: 12pt; letter-spacing: 1.5px; color: #0F766E; font-weight: 700; margin-bottom: 12px; }
+  .pdf-cover-title { font-size: 16pt; color: #102A43; font-weight: 700; max-width: 480px; margin-bottom: 12px; }
+  .pdf-cover-meta { font-size: 12pt; color: #555; margin-top: 4px; }
+  .pdf-cover-meta.muted { color: #999; font-size: 11pt; }
   .pdf-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    border-bottom: 2px solid #102A43;
-    padding-bottom: 12px;
-    margin-bottom: 26px;
+    border-bottom: 1.5px solid #102A43;
+    padding-bottom: 10px;
+    margin-bottom: 24px;
   }
-  .pdf-header-logo { font-family: Georgia, serif; font-weight: 700; font-size: 15px; }
-  .pdf-header-title { font-size: 11px; color: #888; }
-  .pdf-section-heading { font-family: Georgia, serif; color: #102A43; font-size: 20px; margin: 0 0 16px; }
-  .pdf-section-content { font-size: 12.5px; line-height: 1.8; color: #2a2a2a; white-space: pre-wrap; }
+  .pdf-header-logo { font-family: ${REPORT_FONT}; font-weight: 700; font-size: 12pt; }
+  .pdf-header-title { font-size: 11pt; color: #888; }
+  .pdf-section-heading { font-family: ${REPORT_FONT}; color: #102A43; font-weight: 700; font-size: 14pt; margin: 0 0 16px; }
+  .pdf-section-content { font-size: 11pt; line-height: 1.6; color: #2a2a2a; white-space: pre-wrap; }
+  .pdf-section-content strong { color: #102A43; }
   .pdf-footer {
     position: absolute;
     bottom: 12mm;
@@ -1003,7 +1032,7 @@
     right: 16mm;
     display: flex;
     justify-content: space-between;
-    font-size: 9.5px;
+    font-size: 11pt;
     color: #999;
     border-top: 1px solid #ddd;
     padding-top: 8px;
@@ -1039,7 +1068,7 @@
             <div class="pdf-header-title">${title}</div>
           </header>
           <h2 class="pdf-section-heading">${escapeHtml(s.heading)}</h2>
-          <div class="pdf-section-content">${escapeHtml(s.content)}</div>
+          <div class="pdf-section-content">${formatContentHtml(s.content)}</div>
           <footer class="pdf-footer">
             <span>MarketEdge Strategic Analysis Report — Confidential</span>
             <span>Page ${i + 2} of ${totalPages}</span>
@@ -1142,14 +1171,14 @@ ${buildReportBodyHTML(report, milestone, intake)}
                 {summarySection && (
                   <div className="report-highlight">
                     <h4>{summarySection.heading}</h4>
-                    <p>{summarySection.content}</p>
+                    <p>{renderFormattedText(summarySection.content)}</p>
                   </div>
                 )}
 
                 {restSections.map((section, idx) => (
                   <div key={idx} className="snapshot-section">
                     <h4>{section.heading}</h4>
-                    <p>{section.content.length > 500 ? section.content.substring(0, 500) + '…' : section.content}</p>
+                    <p>{renderFormattedText(section.content.length > 500 ? section.content.substring(0, 500) + '…' : section.content)}</p>
                   </div>
                 ))}
               </div>
@@ -1161,12 +1190,13 @@ ${buildReportBodyHTML(report, milestone, intake)}
             </>
           )}
 
-          <style dangerouslySetInnerHTML={{ __html: REPORT_STYLES }} />
-          <div id="full-report-pdf">
-            {report && (
-              <div dangerouslySetInnerHTML={{ __html: buildReportBodyHTML(report, milestone, intake) }} />
-            )}
-          </div>
+          {report && ReactDOM.createPortal(
+            <div style={{ height: 0, width: 0, overflow: 'hidden' }}>
+              <style dangerouslySetInnerHTML={{ __html: REPORT_STYLES }} />
+              <div id="full-report-pdf" dangerouslySetInnerHTML={{ __html: buildReportBodyHTML(report, milestone, intake) }} />
+            </div>,
+            document.body
+          )}
 
           <div style={{ marginTop: '30px', display: 'flex', gap: '12px' }}>
             <button onClick={onPrev} disabled={isFirst || loading}>← Previous</button>
