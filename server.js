@@ -105,7 +105,7 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
     const message = await client.messages.create({
   model: "claude-sonnet-5",
   max_tokens: 4000,
-  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive.`,
+  system: SENIOR_VOICE + ` Respond with ONLY valid JSON matching the exact structure requested. No markdown, no code fences, no prose before or after the JSON.`,
   messages: [{ role: "user", content: prompt }],
 });
 
@@ -172,10 +172,14 @@ Make the requested changes. Return ONLY valid JSON (no markdown, no explanation)
       return res.status(400).json({ error: "Invalid interaction type" });
     }
 
+    const system = responseType === "answer"
+      ? SENIOR_VOICE + ` Respond with a concise plain-text answer only — no JSON, no markdown, no section headers.`
+      : SENIOR_VOICE + ` Respond with ONLY valid JSON matching the exact structure requested. No markdown, no code fences, no prose before or after the JSON.`;
+
     const message = await client.messages.create({
   model: "claude-sonnet-5",
   max_tokens: 4000,
-  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive.`,
+  system,
   messages: [{ role: "user", content: prompt }],
 });
 
