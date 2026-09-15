@@ -27,6 +27,25 @@ const MILESTONE_CATALOG = [
   { key: "execbrief", name: "Executive Brief", desc: "The whole strategy on two pages" },
 ];
 
+// Per-milestone guidance for what the DETAILED_ANALYSIS section must specifically cover.
+const MILESTONE_FOCUS = {
+  customer: `Cover, at minimum, all of the following as clearly labeled sub-sections:
+- Customer Segments: break the market into concrete segments (not generic personas) grounded in the client's brief, with the estimated size/reach of each.
+- Approach Per Segment: for each segment, how to reach them, what messaging resonates, and what channel/motion fits their buying behavior.
+- Economics Per Segment: expected price point, margin profile, and lifetime value per segment — call out which segments are more profitable and why.
+- Psychographic & Sentiment Analysis: the underlying motivations, fears, and emotional drivers behind each segment's buying decision — what pain they are actually trying to escape, not just the functional need.
+- Pain Points & Unmet Requirements: the specific frustrations with current alternatives (including doing nothing) that this business can exploit.
+- Target Customer Recommendation: a clear, decisive call on which segment(s) to prioritize first and why, ranked by attractiveness.`,
+  competitor: `Cover, at minimum: a competitor-by-competitor breakdown (direct and indirect) with their positioning, pricing, and target segment; where each is strong and where each is structurally weak; white space they are leaving open; and how this client should differentiate against each of them specifically.`,
+  gap: `Cover, at minimum: the specific unserved or underserved needs in this market, evidence for why they are unserved, the size of the opportunity each gap represents, and which gaps this business is best positioned to own given its stated strengths.`,
+  beachhead: `Cover, at minimum: 2-3 candidate beachhead segments compared head-to-head on reachability, willingness to pay, competitive intensity, and expansion potential; a decisive recommendation on the single best beachhead; and the specific wedge strategy to win it.`,
+  entry: `Cover, at minimum: the recommended entry sequence (channel-by-channel or region-by-region), the rationale for that sequence, go-to-market motion (sales-led, PLG, partnerships, etc.), and the first 90 days of concrete entry actions.`,
+  financial: `Cover, at minimum: TAM/SAM/SOM with the calculation method shown, a revenue model with unit economics, a 3-year P&L outline with the key assumptions stated explicitly, and funding needs tied to specific milestones/runway.`,
+  bizplan: `Cover, at minimum: the full operating plan spanning product, go-to-market, team, and operations, with concrete milestones and resourcing tied to the financial plan and market entry strategy already defined.`,
+  pitch: `Cover, at minimum: a slide-by-slide narrative outline (problem, solution, market, traction, business model, competition, team, ask), with the specific proof points and numbers this client should lead with on each slide.`,
+  execbrief: `Cover, at minimum: a synthesis of every prior milestone into the 3-5 decisions that matter most, each with its supporting evidence, so a time-constrained reader gets the whole strategy without reading the underlying reports.`,
+};
+
 // Function to safely parse JSON
 function safeParseJSON(text) {
   try {
@@ -99,8 +118,8 @@ Industry: ${industry} | Stage: ${stage} | Target market: ${market} | Primary goa
 Available milestones:
 ${catalog}
 
-Select 4–9 milestones that this specific client needs, in the right order (analysis before strategy before documents). Anchor every rationale in facts from THEIR brief — quote their numbers and constraints. Respond ONLY with valid JSON (no markdown, no fences):
-{"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief","milestones": [{"key":"customer","name":"Customer Analysis","rationale":"1-2 sentences why THIS client needs it"}]}`;
+Select 4–9 milestones that this specific client needs, in the right order (analysis before strategy before documents). Anchor every rationale in facts from THEIR brief — quote their numbers and constraints. For each milestone's rationale, write 5-6 sentences that clearly explain: what this milestone will actually cover, the specific questions it will answer for THIS client, and why it matters given their brief — not a generic description of the milestone type. Respond ONLY with valid JSON (no markdown, no fences):
+{"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief","milestones": [{"key":"customer","name":"Customer Analysis","rationale":"5-6 sentences: what this milestone covers for THIS client, the specific questions it answers, and why it matters given their brief"}]}`;
 
     const message = await client.messages.create({
   model: "claude-sonnet-5",
@@ -144,16 +163,19 @@ app.post('/api/sow-interaction', async (req, res) => {
 
     if (interactionType === "question") {
       responseType = "answer";
-      prompt = `You have designed this scope of work:
+      const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
+      prompt = `You have designed this scope of work for a client, and they are now asking you a follow-up question directly, in conversation. Answer as the consultant who wrote this scope — specific, warm, and direct, the way you'd actually reply to a client on a call.
 
-Summary: ${sow.engagement_summary}
+Client: ${briefContext}
 
-Milestones:
+Scope summary: ${sow.engagement_summary}
+
+Milestones in this engagement:
 ${milestonesStr}
 
 Client question: "${userMessage}"
 
-Answer their question concisely (2-3 sentences). If it's about a topic covered in the scope, mention which milestone(s) address it. If not covered, suggest it could be added.`;
+Write a natural, conversational answer, 3-5 sentences. Ground it in the specifics of THIS client's brief and THIS scope — reference their actual business details, not generic advice. If the question is about something a specific milestone covers, name that milestone and briefly say what it will show them. If the question is about something genuinely not covered by any milestone, say so plainly and suggest how it could be added. Never answer with a generic non-answer — if you're not sure, make your best specific judgment call rather than deflecting.`;
     } else if (interactionType === "revision") {
       responseType = "revised_sow";
       const catalog = MILESTONE_CATALOG.map(m => `${m.key}: ${m.name} — ${m.desc}`).join("\n");
@@ -166,8 +188,8 @@ ${milestonesStr}
 
 Client feedback/request: "${userMessage}"
 
-Make the requested changes. Return ONLY valid JSON (no markdown, no explanation):
-{"engagement_summary": "updated summary if changed, otherwise keep original","milestones": [{"key":"...","name":"...","rationale":"..."}],"changes_made": "Clear summary of changes: what was added, removed, or modified. Be specific."}`;
+Make the requested changes. Keep every unchanged milestone's rationale exactly as it was. For any milestone that is new or whose scope changed, write a 5-6 sentence rationale covering what it will cover for this client, the specific questions it answers, and why it matters given their brief. Return ONLY valid JSON (no markdown, no explanation):
+{"engagement_summary": "updated summary if changed, otherwise keep original","milestones": [{"key":"...","name":"...","rationale":"5-6 sentences, see above"}],"changes_made": "Clear summary of changes: what was added, removed, or modified. Be specific."}`;
     } else {
       return res.status(400).json({ error: "Invalid interaction type" });
     }
@@ -275,6 +297,7 @@ app.post('/api/generate-milestone-report', async (req, res) => {
     }
 
     const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
+    const focus = MILESTONE_FOCUS[milestoneKey] || `Cover the core analytical work this milestone promises, in full depth, organized into clearly labeled sub-sections.`;
 
     let prompt = `You are a senior strategy consultant. Generate a comprehensive, in-depth report for "${milestoneName}". This is a deliverable the client is paying for — it should read like a 15-20 page strategy document, not a summary. Write in full paragraphs, be specific and numeric wherever the brief gives you facts to work with, and never pad with generic filler to hit length — every paragraph must carry real analysis.
 
@@ -291,7 +314,7 @@ MARKET_CONTEXT: [600-800 words. The landscape this client is operating in — gr
 ---SECTION---
 KEY_FINDINGS: [800-1000 words. 5-7 main insights, each explained in a full paragraph with supporting reasoning, not a one-line bullet.]
 ---SECTION---
-DETAILED_ANALYSIS: [1500-2000 words. The core analytical work for this milestone, organized into clearly labeled sub-sections with their own short headers written inline (e.g. "Segment Economics:", "Competitive Dynamics:"). This is the longest, most substantive section.]
+DETAILED_ANALYSIS: [1800-2400 words. The core analytical work for this milestone. ${focus}]
 ---SECTION---
 RECOMMENDATIONS: [1000-1200 words. 8-10 numbered, actionable recommendations, each with the rationale, expected impact, and concrete next steps.]
 ---SECTION---
