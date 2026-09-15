@@ -103,11 +103,11 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
 {"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief","milestones": [{"key":"customer","name":"Customer Analysis","rationale":"1-2 sentences why THIS client needs it"}]}`;
 
     const message = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 4000,
-      system: SENIOR_VOICE + ` Respond ONLY with JSON, no markdown fences, no preamble.`,
-      messages: [{ role: "user", content: prompt }],
-    });
+  model: "claude-sonnet-5",
+  max_tokens: 2000,  // CHANGED FROM 4000 TO 2000
+  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive.`,
+  messages: [{ role: "user", content: prompt }],
+});
 
     const textBlock = message.content.find(block => block.type === "text");
     const text = textBlock?.text || "";
@@ -173,11 +173,11 @@ Make the requested changes. Return ONLY valid JSON (no markdown, no explanation)
     }
 
     const message = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 4000,
-      system: SENIOR_VOICE + ` You must respond with ${responseType === "answer" ? "a helpful answer" : "valid JSON only. No markdown. No explanation."}.`,
-      messages: [{ role: "user", content: prompt }],
-    });
+  model: "claude-sonnet-5",
+  max_tokens: 2000,  // CHANGED FROM 4000 TO 2000
+  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive.`,
+  messages: [{ role: "user", content: prompt }],
+});
 
     const textBlock = message.content.find(block => block.type === "text");
     const text = textBlock?.text || "";
@@ -271,11 +271,11 @@ METRICS: [metric 1, metric 2, ...]`;
     console.log("🔧 Sending API request with prompt length:", prompt.length);
 
     const message = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 4000,
-      system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive.`,
-      messages: [{ role: "user", content: prompt }],
-    });
+  model: "claude-sonnet-5",
+  max_tokens: 2000,  // CHANGED FROM 4000 TO 2000
+  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive.`,
+  messages: [{ role: "user", content: prompt }],
+});
 
     console.log("✅ API Response received. Content blocks:", message.content.length);
     console.log("📊 Full response:", JSON.stringify(message, null, 2).substring(0, 500));
