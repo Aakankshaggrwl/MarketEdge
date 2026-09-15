@@ -230,43 +230,22 @@ app.post('/api/generate-milestone-report', async (req, res) => {
 
     const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
     
-    let prompt = `You are a senior strategy consultant. Generate a COMPREHENSIVE report for "${milestoneName}".
+    let prompt = `You are a senior strategy consultant. Generate a report for "${milestoneName}".
 
 Client: ${briefContext}
 Scope: ${sow.engagement_summary}
 
-Return the report as a TEXT document with these clearly marked sections separated by "---SECTION---":
+Respond with ONLY these sections separated by ---SECTION---:
 
-1. TITLE
-2. EXECUTIVE_SUMMARY (2-3 sentences)
-3. SECTION_ONE (main findings and analysis)
-4. SECTION_TWO (detailed analysis)
-5. SECTION_THREE (more detailed insights)
-6. SECTION_FOUR (strategic implications)
-7. SECTION_FIVE (customer/market specifics)
-8. RECOMMENDATIONS (numbered list, 10+ items)
-9. METRICS (numbered list, 8+ KPIs)
-
-Write naturally, no JSON. Be detailed and comprehensive.
-
-FORMAT:
 TITLE: ${milestoneName}
 ---SECTION---
-EXECUTIVE_SUMMARY: [content here]
+EXECUTIVE_SUMMARY: [2-3 sentences of key findings]
 ---SECTION---
-SECTION_ONE: [content here]
+KEY_FINDINGS: [5-7 main insights]
 ---SECTION---
-SECTION_TWO: [content here]
+RECOMMENDATIONS: [5-8 actionable recommendations, numbered]
 ---SECTION---
-SECTION_THREE: [content here]
----SECTION---
-SECTION_FOUR: [content here]
----SECTION---
-SECTION_FIVE: [content here]
----SECTION---
-RECOMMENDATIONS: [item 1, item 2, ...]
----SECTION---
-METRICS: [metric 1, metric 2, ...]`;
+METRICS: [5 key performance indicators to track]`;
 
     console.log("🔧 Sending API request with prompt length:", prompt.length);
 
