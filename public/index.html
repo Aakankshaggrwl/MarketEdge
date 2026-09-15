@@ -488,7 +488,13 @@
         const response = await fetch('/api/generate-sow', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ intake })
+          body: JSON.stringify({
+            brief: intake.brief,
+            industry: intake.industry,
+            stage: intake.stage,
+            market: intake.market,
+            goal: intake.goal
+          })
         });
 
         const data = await response.json();
@@ -659,12 +665,13 @@
       const [intake, setIntake] = useState(initialIntake || {
         brief: '',
         industry: '',
-        stage: 'Early Stage',
-        market: 'US',
-        goal: 'Growth'
+        stage: 'Idea stage',
+        market: 'India',
+        goal: 'Validate the idea'
       });
       const [recording, setRecording] = useState(false);
       const [generating, setGenerating] = useState(false);
+      const [error, setError] = useState(null);
       const recognitionRef = useRef(null);
 
       useEffect(() => {
@@ -697,8 +704,13 @@
           return;
         }
         setGenerating(true);
+        setError(null);
         generateSOW(intake, (sow) => {
           setGenerating(false);
+          if (sow?.error) {
+            setError(sow.error);
+            return;
+          }
           onComplete(intake, sow);
         });
       };
@@ -727,29 +739,38 @@
               placeholder="Select or type industry"
             />
 
-            <label>Stage</label>
+            <label>Business Stage</label>
             <select value={intake.stage} onChange={(e) => setIntake({ ...intake, stage: e.target.value })}>
-              <option>Early Stage</option>
-              <option>Growth</option>
-              <option>Scale</option>
-              <option>Mature</option>
+              <option>Idea stage</option>
+              <option>Pre-revenue / building</option>
+              <option>Early revenue (&lt;$100K)</option>
+              <option>Growing ($100K–$1M)</option>
+              <option>Scaling ($1M+)</option>
+              <option>Plateaued / restructuring</option>
             </select>
 
-            <label>Market</label>
+            <label>Target Market</label>
             <select value={intake.market} onChange={(e) => setIntake({ ...intake, market: e.target.value })}>
-              <option>US</option>
+              <option>India</option>
+              <option>Middle East / GCC</option>
+              <option>USA</option>
               <option>Europe</option>
-              <option>Asia</option>
+              <option>Southeast Asia</option>
               <option>Global</option>
+              <option>Not sure yet</option>
             </select>
 
             <label>Primary Goal</label>
             <select value={intake.goal} onChange={(e) => setIntake({ ...intake, goal: e.target.value })}>
-              <option>Growth</option>
-              <option>Profitability</option>
-              <option>Market Entry</option>
-              <option>Product Expansion</option>
+              <option>Validate the idea</option>
+              <option>Find my first market</option>
+              <option>Enter a new market</option>
+              <option>Raise funding</option>
+              <option>Restart growth</option>
+              <option>Build the full strategy</option>
             </select>
+
+            {error && <div className="error">{error}</div>}
 
             <button onClick={handleGenerate} disabled={generating}>
               {generating ? '⏳ Generating...' : '✨ Generate SOW'}
