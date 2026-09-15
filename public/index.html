@@ -532,7 +532,6 @@
 
     async function generateMilestoneReport(milestoneKey, milestoneName, sow, intake, onReport) {
   try {
-    alert("🎯 STEP 1: Report request started for " + milestoneName);
     console.log("🎯 REPORT REQUEST:", { milestoneKey, milestoneName });
 
     const response = await fetch('/api/generate-milestone-report', {
@@ -541,28 +540,22 @@
       body: JSON.stringify({ milestoneKey, milestoneName, sow, intake })
     });
 
-    alert("🎯 STEP 2: Got response from server. Status: " + response.status);
     console.log("📡 HTTP Response status:", response.status);
 
     const data = await response.json();
-    alert("🎯 STEP 3: Parsed JSON response. Success field: " + data.success);
     console.log("📦 FULL RESPONSE:", data);
 
     if (!response.ok) {
-      alert("❌ ERROR: Server returned " + response.status + "\nError: " + (data.error || "Unknown error"));
       onReport({ error: data.error || "Server error" });
       return;
     }
 
     if (data.success && data.report) {
-      alert("✅ SUCCESS! Report has " + data.report.sections.length + " sections");
       onReport(data.report);
     } else {
-      alert("❌ ERROR: Response missing 'success' or 'report' field\nGot: " + JSON.stringify(data).substring(0, 200));
       onReport({ error: "Invalid response structure" });
     }
   } catch (err) {
-    alert("❌ CATCH ERROR: " + err.message);
     console.error("❌ FETCH ERROR:", err);
     onReport({ error: `Network error: ${err.message}` });
   }

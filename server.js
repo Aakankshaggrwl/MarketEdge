@@ -104,14 +104,14 @@ Select 4–9 milestones that this specific client needs, in the right order (ana
 
     const message = await client.messages.create({
   model: "claude-sonnet-5",
-  max_tokens: 2000,  // CHANGED FROM 4000 TO 2000
+  max_tokens: 4000,
   system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive.`,
   messages: [{ role: "user", content: prompt }],
 });
 
     const textBlock = message.content.find(block => block.type === "text");
     const text = textBlock?.text || "";
-    
+
     if (!text || text.trim().length === 0) {
       return res.status(500).json({ error: "Empty response from Claude" });
     }
@@ -174,14 +174,14 @@ Make the requested changes. Return ONLY valid JSON (no markdown, no explanation)
 
     const message = await client.messages.create({
   model: "claude-sonnet-5",
-  max_tokens: 2000,  // CHANGED FROM 4000 TO 2000
+  max_tokens: 4000,
   system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive.`,
   messages: [{ role: "user", content: prompt }],
 });
 
     const textBlock = message.content.find(block => block.type === "text");
     const text = textBlock?.text || "";
-    
+
     if (!text) {
       return res.status(500).json({ error: "Empty response from Claude" });
     }
@@ -217,6 +217,48 @@ app.get('/', (req, res) => {
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+// Parse the ---SECTION----delimited text report into { title, sections: [{heading, content}] }
+function parseTextReport(rawText, fallbackTitle) {
+  const parts = rawText.split('---SECTION---').map(p => p.trim()).filter(Boolean);
+
+  let title = fallbackTitle;
+  const sections = [];
+
+  for (const part of parts) {
+    const match = part.match(/^([A-Z][A-Z_]*)\s*:\s*([\s\S]*)$/);
+
+    if (!match) {
+      // No "LABEL:" prefix — treat as a continuation of the previous section
+      if (sections.length > 0) {
+        sections[sections.length - 1].content += "\n\n" + part;
+      }
+      continue;
+    }
+
+    const [, label, body] = match;
+    const content = body.trim();
+
+    if (label === 'TITLE') {
+      title = content || fallbackTitle;
+      continue;
+    }
+
+    const heading = label
+      .split('_')
+      .filter(Boolean)
+      .map(w => w.charAt(0) + w.slice(1).toLowerCase())
+      .join(' ');
+
+    sections.push({ heading, content });
+  }
+
+  if (sections.length === 0) {
+    sections.push({ heading: 'Report', content: rawText.trim() });
+  }
+
+  return { title, sections };
+}
+
 // Generate comprehensive milestone report (with detailed logging)
 app.post('/api/generate-milestone-report', async (req, res) => {
   try {
@@ -229,30 +271,38 @@ app.post('/api/generate-milestone-report', async (req, res) => {
     }
 
     const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
-    
-    let prompt = `You are a senior strategy consultant. Generate a report for "${milestoneName}".
+
+    let prompt = `You are a senior strategy consultant. Generate a comprehensive, in-depth report for "${milestoneName}". This is a deliverable the client is paying for — it should read like a 15-20 page strategy document, not a summary. Write in full paragraphs, be specific and numeric wherever the brief gives you facts to work with, and never pad with generic filler to hit length — every paragraph must carry real analysis.
 
 Client: ${briefContext}
 Scope: ${sow.engagement_summary}
 
-Respond with ONLY these sections separated by ---SECTION---:
+Respond with ONLY these sections separated by ---SECTION---. Follow the target length for each section — together they should total roughly 7,500-10,000 words:
 
 TITLE: ${milestoneName}
 ---SECTION---
-EXECUTIVE_SUMMARY: [2-3 sentences of key findings]
+EXECUTIVE_SUMMARY: [300-400 words. The headline conclusions and why they matter to this client specifically.]
 ---SECTION---
-KEY_FINDINGS: [5-7 main insights]
+MARKET_CONTEXT: [600-800 words. The landscape this client is operating in — grounded in their industry, stage, and target market.]
 ---SECTION---
-RECOMMENDATIONS: [5-8 actionable recommendations, numbered]
+KEY_FINDINGS: [800-1000 words. 5-7 main insights, each explained in a full paragraph with supporting reasoning, not a one-line bullet.]
 ---SECTION---
-METRICS: [5 key performance indicators to track]`;
+DETAILED_ANALYSIS: [1500-2000 words. The core analytical work for this milestone, organized into clearly labeled sub-sections with their own short headers written inline (e.g. "Segment Economics:", "Competitive Dynamics:"). This is the longest, most substantive section.]
+---SECTION---
+RECOMMENDATIONS: [1000-1200 words. 8-10 numbered, actionable recommendations, each with the rationale, expected impact, and concrete next steps.]
+---SECTION---
+IMPLEMENTATION_ROADMAP: [600-800 words. Sequenced phases or milestones for acting on the recommendations, with rough timing.]
+---SECTION---
+RISKS_AND_MITIGATIONS: [600-800 words. The main risks to this plan and how to mitigate each.]
+---SECTION---
+METRICS: [400-500 words. 5-7 key performance indicators to track, with target ranges and why each one matters.]`;
 
     console.log("🔧 Sending API request with prompt length:", prompt.length);
 
     const message = await client.messages.create({
   model: "claude-sonnet-5",
-  max_tokens: 2000,  // CHANGED FROM 4000 TO 2000
-  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive.`,
+  max_tokens: 16000,
+  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive and detailed — this report should be long and substantive, not a summary.`,
   messages: [{ role: "user", content: prompt }],
 });
 
