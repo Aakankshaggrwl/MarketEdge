@@ -327,10 +327,6 @@
       color: #102A43;
     }
 
-    #full-report-pdf {
-      pointer-events: none;
-    }
-
     .combo-select {
       position: relative;
       width: 100%;
@@ -1023,7 +1019,7 @@
   .pdf-header-logo { font-family: ${REPORT_FONT}; font-weight: 700; font-size: 12pt; }
   .pdf-header-title { font-size: 11pt; color: #888; }
   .pdf-section-heading { font-family: ${REPORT_FONT}; color: #102A43; font-weight: 700; font-size: 14pt; margin: 0 0 16px; }
-  .pdf-section-content { font-size: 11pt; line-height: 1.6; color: #2a2a2a; white-space: pre-wrap; }
+  .pdf-section-content { font-size: 11pt; line-height: 1.6; color: #2a2a2a; white-space: pre-wrap; text-align: justify; }
   .pdf-section-content strong { color: #102A43; }
   .pdf-footer {
     position: absolute;
@@ -1097,6 +1093,172 @@ ${buildReportBodyHTML(report, milestone, intake)}
 </html>`;
     }
 
+    // ============ REPORT PDF (vector text, not a DOM screenshot) ============
+    // Generates the PDF by drawing real text with jsPDF directly, instead of rasterizing
+    // the DOM with html2canvas. This gives proper justified alignment, a much smaller file,
+    // selectable/searchable text, and avoids an entire class of canvas-capture bugs
+    // (blank/zero-height captures, stacking-context bleed-through, edge clipping).
+    const PDF_NAVY = [16, 42, 67];
+    const PDF_GOLD = [201, 162, 39];
+    const PDF_TEAL = [15, 118, 110];
+    const PDF_GREY_LABEL = [136, 136, 136];
+    const PDF_GREY_FOOTER = [153, 153, 153];
+    const PDF_BODY_COLOR = [42, 42, 42];
+    const PDF_PAGE_W = 210, PDF_PAGE_H = 297;
+    const PDF_MARGIN_X = 16, PDF_MARGIN_TOP = 18, PDF_MARGIN_BOTTOM = 18;
+    const PDF_CONTENT_W = PDF_PAGE_W - PDF_MARGIN_X * 2;
+
+    function pdfDrawHeader(doc, title) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...PDF_NAVY);
+      doc.text('Market', PDF_MARGIN_X, PDF_MARGIN_TOP);
+      const marketW = doc.getTextWidth('Market');
+      doc.setTextColor(...PDF_GOLD);
+      doc.text('Edge', PDF_MARGIN_X + marketW, PDF_MARGIN_TOP);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(...PDF_GREY_LABEL);
+      doc.text(title, PDF_PAGE_W - PDF_MARGIN_X, PDF_MARGIN_TOP, { align: 'right' });
+
+      doc.setDrawColor(...PDF_NAVY);
+      doc.setLineWidth(0.4);
+      doc.line(PDF_MARGIN_X, PDF_MARGIN_TOP + 3, PDF_PAGE_W - PDF_MARGIN_X, PDF_MARGIN_TOP + 3);
+    }
+
+    function pdfDrawFooter(doc, pageNum, totalPages) {
+      const y = PDF_PAGE_H - PDF_MARGIN_BOTTOM + 4;
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.2);
+      doc.line(PDF_MARGIN_X, y - 4, PDF_PAGE_W - PDF_MARGIN_X, y - 4);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(...PDF_GREY_FOOTER);
+      doc.text('MarketEdge Strategic Analysis Report — Confidential', PDF_MARGIN_X, y);
+      doc.text(`Page ${pageNum} of ${totalPages}`, PDF_PAGE_W - PDF_MARGIN_X, y, { align: 'right' });
+    }
+
+    function pdfDrawCoverPage(doc, title, preparedFor, dateStr) {
+      const cx = PDF_PAGE_W / 2;
+      let y = 130;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(...PDF_NAVY);
+      const marketW = doc.getTextWidth('Market');
+      const edgeW = doc.getTextWidth('Edge');
+      const totalW = marketW + edgeW;
+      doc.text('Market', cx - totalW / 2, y);
+      doc.setTextColor(...PDF_GOLD);
+      doc.text('Edge', cx - totalW / 2 + marketW, y);
+
+      y += 7;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(...PDF_GREY_LABEL);
+      doc.text('AI-NATIVE STRATEGY PORTAL', cx, y, { align: 'center' });
+
+      y += 35;
+      doc.setDrawColor(...PDF_NAVY);
+      doc.setLineWidth(0.6);
+      doc.line(cx - 60, y, cx + 60, y);
+
+      y += 12;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...PDF_TEAL);
+      doc.text('STRATEGIC ANALYSIS REPORT', cx, y, { align: 'center' });
+
+      y += 9;
+      doc.setFontSize(16);
+      doc.setTextColor(...PDF_NAVY);
+      const titleLines = doc.splitTextToSize(title, 150);
+      titleLines.forEach(line => { doc.text(line, cx, y, { align: 'center' }); y += 7; });
+
+      y += 5;
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.2);
+      doc.line(cx - 60, y, cx + 60, y);
+
+      y += 10;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(12);
+      doc.setTextColor(85, 85, 85);
+      if (preparedFor) {
+        doc.text(`Prepared for: ${preparedFor}`, cx, y, { align: 'center' });
+        y += 6;
+      }
+      doc.setFontSize(11);
+      doc.setTextColor(...PDF_GREY_FOOTER);
+      doc.text(dateStr, cx, y, { align: 'center' });
+    }
+
+    function pdfDrawSectionPage(doc, reportTitle, heading, content) {
+      pdfDrawHeader(doc, reportTitle);
+
+      let y = PDF_MARGIN_TOP + 16;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(...PDF_NAVY);
+      doc.text(heading, PDF_MARGIN_X, y);
+      y += 10;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(...PDF_BODY_COLOR);
+      const lineHeight = 5.6;
+      const bottomLimit = PDF_PAGE_H - PDF_MARGIN_BOTTOM - 6;
+
+      // Markdown ** markers stripped here (not converted to bold): mixing bold runs into
+      // justified vector text requires per-segment width math that isn't worth the added
+      // fragility. Plain, correctly-justified text beats a garbled or broken layout.
+      const cleanContent = String(content || '').replace(/\*\*/g, '');
+      const paragraphs = cleanContent.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+
+      paragraphs.forEach((para) => {
+        const lines = doc.splitTextToSize(para, PDF_CONTENT_W);
+        lines.forEach((line, li) => {
+          if (y > bottomLimit) {
+            doc.addPage();
+            pdfDrawHeader(doc, reportTitle);
+            y = PDF_MARGIN_TOP + 16;
+          }
+          const isLastLineOfParagraph = li === lines.length - 1;
+          if (isLastLineOfParagraph) {
+            doc.text(line, PDF_MARGIN_X, y);
+          } else {
+            doc.text(line, PDF_MARGIN_X, y, { align: 'justify', maxWidth: PDF_CONTENT_W });
+          }
+          y += lineHeight;
+        });
+        y += lineHeight * 0.6;
+      });
+    }
+
+    async function generateReportPDF(report, milestone, intake) {
+      const throwaway = document.createElement('div');
+      const doc = await html2pdf().set({ jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(throwaway).toPdf().get('pdf');
+
+      const title = report.title || milestone.name;
+      const preparedFor = [intake?.industry, intake?.market].filter(Boolean).join(' — ');
+      const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+
+      pdfDrawCoverPage(doc, title, preparedFor, dateStr);
+
+      report.sections.forEach((s) => {
+        doc.addPage();
+        pdfDrawSectionPage(doc, title, s.heading, s.content);
+      });
+
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let p = 2; p <= totalPages; p++) {
+        doc.setPage(p);
+        pdfDrawFooter(doc, p, totalPages);
+      }
+
+      doc.save(`MarketEdge-${milestone.name.replace(/\s+/g, '-')}.pdf`);
+    }
+
     function MilestoneStep({ milestone, sow, intake, onNext, onPrev, isFirst, isLast }) {
       const [report, setReport] = useState(null);
       const [loading, setLoading] = useState(true);
@@ -1124,23 +1286,8 @@ ${buildReportBodyHTML(report, milestone, intake)}
       }, [milestone.key, sow, intake]);
 
       const downloadPDF = () => {
-        const element = document.getElementById('full-report-pdf');
-        if (element) {
-          html2pdf().set({
-            margin: 0,
-            filename: `MarketEdge-${milestone.name.replace(/\s+/g, '-')}.pdf`,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: {
-              scale: 2,
-              useCORS: true,
-              windowWidth: 794,
-              height: element.scrollHeight,
-              windowHeight: element.scrollHeight
-            },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak: { mode: ['css', 'legacy'] }
-          }).from(element).save();
-        }
+        if (!report) return;
+        generateReportPDF(report, milestone, intake);
       };
 
       const printReport = () => {
@@ -1188,14 +1335,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
                 <button onClick={printReport} className="secondary">🖨️ Print</button>
               </div>
             </>
-          )}
-
-          {report && ReactDOM.createPortal(
-            <div style={{ height: 0, width: 0, overflow: 'hidden' }}>
-              <style dangerouslySetInnerHTML={{ __html: REPORT_STYLES }} />
-              <div id="full-report-pdf" dangerouslySetInnerHTML={{ __html: buildReportBodyHTML(report, milestone, intake) }} />
-            </div>,
-            document.body
           )}
 
           <div style={{ marginTop: '30px', display: 'flex', gap: '12px' }}>
