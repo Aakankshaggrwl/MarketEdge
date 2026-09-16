@@ -269,6 +269,43 @@
       color: #333;
       font-size: 11pt;
       margin-bottom: 12px;
+      text-align: justify;
+    }
+
+    .block-sub-heading {
+      font-family: 'Calibri', 'Carlito', 'Segoe UI', Arial, sans-serif;
+      color: #0F766E;
+      font-weight: 700;
+      font-size: 14pt;
+      margin: 16px 0 6px;
+    }
+
+    .block-mini-heading {
+      font-family: 'Calibri', 'Carlito', 'Segoe UI', Arial, sans-serif;
+      color: #102A43;
+      font-weight: 700;
+      font-size: 12pt;
+      margin: 12px 0 4px;
+    }
+
+    .block-bullet-list {
+      margin: 0 0 10px 22px;
+      padding: 0;
+    }
+
+    .block-bullet-list li {
+      font-size: 11pt;
+      line-height: 1.7;
+      color: #333;
+      text-align: justify;
+      margin-bottom: 6px;
+    }
+
+    .snapshot-more {
+      font-size: 10.5pt;
+      color: #888;
+      font-style: italic;
+      margin-top: 2px;
     }
 
     .report-highlight {
@@ -294,6 +331,7 @@
       font-size: 11pt;
       line-height: 1.7;
       color: #25384A;
+      text-align: justify;
     }
 
     .snapshot-section {
@@ -313,6 +351,7 @@
       color: #333;
       font-size: 11pt;
       line-height: 1.7;
+      text-align: justify;
     }
 
     .milestone-rationale {
@@ -975,6 +1014,116 @@
       );
     }
 
+    // ============ REPORT CONTENT STRUCTURE ============
+    // The model writes each section's content as lightweight markdown: "## " subsection
+    // headings, "### " numbered talking-point headings, "- " bullets (optionally leading
+    // with a **bold** label), and inline **bold** within prose. This parses that into a
+    // block list that every renderer (on-screen preview, print, PDF) consumes the same way,
+    // so structure and numbering never drift between the three.
+    function stripInlineBold(text) {
+      return String(text).replace(/\*\*([^*]+)\*\*/g, '$1').trim();
+    }
+
+    function parseReportBlocks(content) {
+      const lines = String(content || '').split(/\r?\n/);
+      const blocks = [];
+      let paraBuf = [];
+      let bulletBuf = null;
+
+      function flushPara() {
+        if (paraBuf.length) {
+          blocks.push({ type: 'p', text: paraBuf.join(' ').trim() });
+          paraBuf = [];
+        }
+      }
+      function flushBullets() {
+        if (bulletBuf && bulletBuf.length) {
+          blocks.push({ type: 'ul', items: bulletBuf });
+        }
+        bulletBuf = null;
+      }
+
+      lines.forEach(rawLine => {
+        const line = rawLine.trim();
+        if (!line) { flushPara(); flushBullets(); return; }
+
+        const h3Match = line.match(/^##\s+(.*)$/);
+        const h4Match = line.match(/^###\s+(.*)$/);
+        const bulletMatch = line.match(/^[-*]\s+(.*)$/);
+
+        if (h4Match) {
+          flushPara(); flushBullets();
+          blocks.push({ type: 'h4', text: stripInlineBold(h4Match[1]) });
+        } else if (h3Match) {
+          flushPara(); flushBullets();
+          blocks.push({ type: 'h3', text: stripInlineBold(h3Match[1]) });
+        } else if (bulletMatch) {
+          flushPara();
+          if (!bulletBuf) bulletBuf = [];
+          bulletBuf.push(bulletMatch[1].trim());
+        } else {
+          flushBullets();
+          paraBuf.push(line);
+        }
+      });
+      flushPara();
+      flushBullets();
+
+      if (blocks.length === 0) {
+        const fallback = String(content || '').trim();
+        if (fallback) blocks.push({ type: 'p', text: fallback });
+      }
+      return blocks;
+    }
+
+    // Adds sequential numbering: sections are numbered 1..N; "## " subsections become
+    // N.1, N.2 within their section; "### " mini-headings reset to 1, 2, 3 under each
+    // subsection (or under the section itself, if it has no "## " subsections).
+    function parseAndNumberReport(report) {
+      const sections = (report?.sections || []).map((s, sIdx) => {
+        const blocks = parseReportBlocks(s.content);
+        let h3Counter = 0;
+        let h4Counter = 0;
+        blocks.forEach(b => {
+          if (b.type === 'h3') {
+            h3Counter += 1;
+            h4Counter = 0;
+            b.number = `${sIdx + 1}.${h3Counter}`;
+          } else if (b.type === 'h4') {
+            h4Counter += 1;
+            b.number = String(h4Counter);
+          }
+        });
+        return { heading: s.heading, sectionNumber: sIdx + 1, blocks };
+      });
+      return { title: report?.title, sections };
+    }
+
+    // Renders a block list as JSX for the on-screen preview.
+    function renderBlocksJSX(blocks) {
+      return blocks.map((b, i) => {
+        if (b.type === 'h3') return <div key={i} className="block-sub-heading">{b.number} {b.text}</div>;
+        if (b.type === 'h4') return <div key={i} className="block-mini-heading">{b.number}. {b.text}</div>;
+        if (b.type === 'ul') return (
+          <ul key={i} className="block-bullet-list">
+            {b.items.map((item, j) => <li key={j}>{renderFormattedText(item)}</li>)}
+          </ul>
+        );
+        return <p key={i}>{renderFormattedText(b.text)}</p>;
+      });
+    }
+
+    // Renders a block list as an HTML string for print/PDF-source markup. Safe because
+    // formatContentHtml escapes every dynamic value before converting **bold** to <strong>.
+    function blocksToHtml(blocks) {
+      return blocks.map(b => {
+        if (b.type === 'h3') return `<h3 class="pdf-sub-heading">${escapeHtml(b.number + ' ' + b.text)}</h3>`;
+        if (b.type === 'h4') return `<h4 class="pdf-mini-heading">${escapeHtml(b.number + '. ' + b.text)}</h4>`;
+        if (b.type === 'ul') return `<ul class="pdf-bullet-list">${b.items.map(item => `<li>${formatContentHtml(item)}</li>`).join('')}</ul>`;
+        return `<p class="pdf-paragraph">${formatContentHtml(b.text)}</p>`;
+      }).join('\n');
+    }
+
     // Builds a full standalone HTML document string: cover page + one page per section,
     // each carrying a running header (MarketEdge wordmark + report title) and footer
     // (confidentiality line + page label). Used for both Print and the hidden PDF-export node.
@@ -1018,9 +1167,15 @@
   }
   .pdf-header-logo { font-family: ${REPORT_FONT}; font-weight: 700; font-size: 12pt; }
   .pdf-header-title { font-size: 11pt; color: #888; }
-  .pdf-section-heading { font-family: ${REPORT_FONT}; color: #102A43; font-weight: 700; font-size: 14pt; margin: 0 0 16px; }
-  .pdf-section-content { font-size: 11pt; line-height: 1.6; color: #2a2a2a; white-space: pre-wrap; text-align: justify; }
-  .pdf-section-content strong { color: #102A43; }
+  .pdf-section-heading { font-family: ${REPORT_FONT}; color: #102A43; font-weight: 700; font-size: 16pt; margin: 0 0 18px; }
+  .pdf-section-body { font-size: 11pt; }
+  .pdf-sub-heading { font-family: ${REPORT_FONT}; color: #0F766E; font-weight: 700; font-size: 14pt; margin: 20px 0 8px; }
+  .pdf-sub-heading:first-child { margin-top: 0; }
+  .pdf-mini-heading { font-family: ${REPORT_FONT}; color: #102A43; font-weight: 700; font-size: 12pt; margin: 14px 0 6px; }
+  .pdf-paragraph { font-size: 11pt; line-height: 1.65; color: #2a2a2a; text-align: justify; margin: 0 0 11px; }
+  .pdf-bullet-list { margin: 0 0 12px 22px; padding: 0; }
+  .pdf-bullet-list li { font-size: 11pt; line-height: 1.65; color: #2a2a2a; text-align: justify; margin-bottom: 7px; }
+  .pdf-paragraph strong, .pdf-bullet-list strong { color: #102A43; }
   .pdf-footer {
     position: absolute;
     bottom: 12mm;
@@ -1041,7 +1196,8 @@
       const title = escapeHtml(report.title || milestone.name);
       const preparedFor = [intake?.industry, intake?.market].filter(Boolean).map(escapeHtml).join(' — ');
       const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-      const totalPages = report.sections.length + 1;
+      const numbered = parseAndNumberReport(report);
+      const totalPages = numbered.sections.length + 1;
 
       const wordmark = `<span style="color:#102A43">Market</span><span style="color:#C9A227">Edge</span>`;
 
@@ -1057,14 +1213,14 @@
           <div class="pdf-cover-meta muted">${dateStr}</div>
         </section>`;
 
-      const sectionPages = report.sections.map((s, i) => `
+      const sectionPages = numbered.sections.map((s, i) => `
         <section class="pdf-page">
           <header class="pdf-header">
             <div class="pdf-header-logo">${wordmark}</div>
             <div class="pdf-header-title">${title}</div>
           </header>
-          <h2 class="pdf-section-heading">${escapeHtml(s.heading)}</h2>
-          <div class="pdf-section-content">${formatContentHtml(s.content)}</div>
+          <h2 class="pdf-section-heading">${s.sectionNumber}. ${escapeHtml(s.heading)}</h2>
+          <div class="pdf-section-body">${blocksToHtml(s.blocks)}</div>
           <footer class="pdf-footer">
             <span>MarketEdge Strategic Analysis Report — Confidential</span>
             <span>Page ${i + 2} of ${totalPages}</span>
@@ -1193,45 +1349,155 @@ ${buildReportBodyHTML(report, milestone, intake)}
       doc.text(dateStr, cx, y, { align: 'center' });
     }
 
-    function pdfDrawSectionPage(doc, reportTitle, heading, content) {
-      pdfDrawHeader(doc, reportTitle);
+    // Splits raw text (which may contain **bold** spans) into a flat word list carrying
+    // a per-word bold flag — the unit jsPDF needs to lay out and justify mixed-style text,
+    // since its built-in align:'justify' only works on a single uniform-font string.
+    function pdfTokenizeBoldWords(text) {
+      const parts = String(text).split(/(\*\*[^*]+\*\*)/g).filter(p => p !== '');
+      const words = [];
+      parts.forEach(part => {
+        const bold = part.startsWith('**') && part.endsWith('**') && part.length > 4;
+        const clean = bold ? part.slice(2, -2) : part;
+        clean.split(/\s+/).filter(Boolean).forEach(w => words.push({ text: w, bold }));
+      });
+      return words;
+    }
 
-      let y = PDF_MARGIN_TOP + 16;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(14);
-      doc.setTextColor(...PDF_NAVY);
-      doc.text(heading, PDF_MARGIN_X, y);
-      y += 10;
+    function pdfWordWidth(doc, word, bold, fontSize) {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(fontSize);
+      return doc.getTextWidth(word);
+    }
 
+    // Greedy line-wrap over the word list, respecting each word's own bold width.
+    function pdfWrapWords(doc, words, maxWidth, fontSize) {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
-      doc.setTextColor(...PDF_BODY_COLOR);
-      const lineHeight = 5.6;
+      doc.setFontSize(fontSize);
+      const spaceWidth = doc.getTextWidth(' ');
+      const lines = [];
+      let current = [];
+      let currentWidth = 0;
+      words.forEach(w => {
+        const ww = pdfWordWidth(doc, w.text, w.bold, fontSize);
+        const extra = current.length === 0 ? ww : spaceWidth + ww;
+        if (current.length > 0 && currentWidth + extra > maxWidth) {
+          lines.push(current);
+          current = [w];
+          currentWidth = ww;
+        } else {
+          current.push(w);
+          currentWidth += extra;
+        }
+      });
+      if (current.length) lines.push(current);
+      return lines;
+    }
+
+    // Draws one wrapped line, switching font per word. When justify is true and the line
+    // has more than one word, the inter-word gap is stretched so the line's right edge
+    // lands exactly on maxWidth — manual justification, since built-in align:'justify'
+    // can't mix bold and normal runs in one call.
+    function pdfDrawWordLine(doc, words, x, y, maxWidth, fontSize, justify, color) {
+      doc.setFontSize(fontSize);
+      doc.setFont('helvetica', 'normal');
+      const spaceWidth = doc.getTextWidth(' ');
+      let totalWordWidth = 0;
+      words.forEach(w => { totalWordWidth += pdfWordWidth(doc, w.text, w.bold, fontSize); });
+      let gap = spaceWidth;
+      if (justify && words.length > 1) {
+        const computed = (maxWidth - totalWordWidth) / (words.length - 1);
+        gap = computed > 0 ? computed : spaceWidth;
+      }
+      let cx = x;
+      words.forEach(w => {
+        doc.setFont('helvetica', w.bold ? 'bold' : 'normal');
+        doc.setTextColor(...color);
+        doc.text(w.text, cx, y);
+        cx += pdfWordWidth(doc, w.text, w.bold, fontSize) + gap;
+      });
+    }
+
+    // Draws one section's numbered heading and its block list (subsections, mini-headings,
+    // paragraphs, bullets), paginating as content overflows the page.
+    function pdfRenderSection(doc, reportTitle, sectionNumber, heading, blocks) {
+      pdfDrawHeader(doc, reportTitle);
+      let y = PDF_MARGIN_TOP + 18;
       const bottomLimit = PDF_PAGE_H - PDF_MARGIN_BOTTOM - 6;
+      const bodyLineHeight = 5.6;
 
-      // Markdown ** markers stripped here (not converted to bold): mixing bold runs into
-      // justified vector text requires per-segment width math that isn't worth the added
-      // fragility. Plain, correctly-justified text beats a garbled or broken layout.
-      const cleanContent = String(content || '').replace(/\*\*/g, '');
-      const paragraphs = cleanContent.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+      function ensureSpace(needed) {
+        if (y + needed > bottomLimit) {
+          doc.addPage();
+          pdfDrawHeader(doc, reportTitle);
+          y = PDF_MARGIN_TOP + 18;
+        }
+      }
 
-      paragraphs.forEach((para) => {
-        const lines = doc.splitTextToSize(para, PDF_CONTENT_W);
-        lines.forEach((line, li) => {
-          if (y > bottomLimit) {
-            doc.addPage();
-            pdfDrawHeader(doc, reportTitle);
-            y = PDF_MARGIN_TOP + 16;
-          }
-          const isLastLineOfParagraph = li === lines.length - 1;
-          if (isLastLineOfParagraph) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(...PDF_NAVY);
+      doc.text(`${sectionNumber}. ${heading}`, PDF_MARGIN_X, y);
+      y += 11;
+
+      blocks.forEach(block => {
+        if (block.type === 'h3') {
+          ensureSpace(15);
+          y += 3;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(14);
+          doc.setTextColor(...PDF_TEAL);
+          const lines = doc.splitTextToSize(`${block.number}  ${block.text}`, PDF_CONTENT_W);
+          lines.forEach(line => {
+            ensureSpace(7);
             doc.text(line, PDF_MARGIN_X, y);
-          } else {
-            doc.text(line, PDF_MARGIN_X, y, { align: 'justify', maxWidth: PDF_CONTENT_W });
-          }
-          y += lineHeight;
-        });
-        y += lineHeight * 0.6;
+            y += 7;
+          });
+          y += 2;
+        } else if (block.type === 'h4') {
+          ensureSpace(13);
+          y += 2;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.setTextColor(...PDF_BODY_COLOR);
+          const lines = doc.splitTextToSize(`${block.number}. ${block.text}`, PDF_CONTENT_W);
+          lines.forEach(line => {
+            ensureSpace(6);
+            doc.text(line, PDF_MARGIN_X, y);
+            y += 6;
+          });
+          y += 1.5;
+        } else if (block.type === 'ul') {
+          const indent = 6;
+          const bulletWidth = PDF_CONTENT_W - indent;
+          block.items.forEach(itemText => {
+            const words = pdfTokenizeBoldWords(itemText);
+            const lines = pdfWrapWords(doc, words, bulletWidth, 11);
+            lines.forEach((lineWords, li) => {
+              ensureSpace(bodyLineHeight);
+              if (li === 0) {
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(11);
+                doc.setTextColor(...PDF_BODY_COLOR);
+                doc.text('•', PDF_MARGIN_X, y);
+              }
+              const justify = li !== lines.length - 1;
+              pdfDrawWordLine(doc, lineWords, PDF_MARGIN_X + indent, y, bulletWidth, 11, justify, PDF_BODY_COLOR);
+              y += bodyLineHeight;
+            });
+            y += 2.4;
+          });
+          y += 1.6;
+        } else {
+          const words = pdfTokenizeBoldWords(block.text);
+          const lines = pdfWrapWords(doc, words, PDF_CONTENT_W, 11);
+          lines.forEach((lineWords, li) => {
+            ensureSpace(bodyLineHeight);
+            const justify = li !== lines.length - 1;
+            pdfDrawWordLine(doc, lineWords, PDF_MARGIN_X, y, PDF_CONTENT_W, 11, justify, PDF_BODY_COLOR);
+            y += bodyLineHeight;
+          });
+          y += 3.2;
+        }
       });
     }
 
@@ -1245,9 +1511,10 @@ ${buildReportBodyHTML(report, milestone, intake)}
 
       pdfDrawCoverPage(doc, title, preparedFor, dateStr);
 
-      report.sections.forEach((s) => {
+      const numbered = parseAndNumberReport(report);
+      numbered.sections.forEach((s) => {
         doc.addPage();
-        pdfDrawSectionPage(doc, title, s.heading, s.content);
+        pdfRenderSection(doc, title, s.sectionNumber, s.heading, s.blocks);
       });
 
       const totalPages = doc.internal.getNumberOfPages();
@@ -1299,8 +1566,9 @@ ${buildReportBodyHTML(report, milestone, intake)}
         setTimeout(() => printWindow.print(), 300);
       };
 
-      const summarySection = report?.sections?.[0];
-      const restSections = report?.sections?.slice(1) || [];
+      const numberedReport = report ? parseAndNumberReport(report) : null;
+      const summarySection = numberedReport?.sections?.[0];
+      const restSections = numberedReport?.sections?.slice(1) || [];
 
       return (
         <div className="view">
@@ -1317,17 +1585,22 @@ ${buildReportBodyHTML(report, milestone, intake)}
 
                 {summarySection && (
                   <div className="report-highlight">
-                    <h4>{summarySection.heading}</h4>
-                    <p>{renderFormattedText(summarySection.content)}</p>
+                    <h4>{summarySection.sectionNumber}. {summarySection.heading}</h4>
+                    {renderBlocksJSX(summarySection.blocks)}
                   </div>
                 )}
 
-                {restSections.map((section, idx) => (
-                  <div key={idx} className="snapshot-section">
-                    <h4>{section.heading}</h4>
-                    <p>{renderFormattedText(section.content.length > 500 ? section.content.substring(0, 500) + '…' : section.content)}</p>
-                  </div>
-                ))}
+                {restSections.map((section) => {
+                  const preview = section.blocks.slice(0, 3);
+                  const truncated = section.blocks.length > preview.length;
+                  return (
+                    <div key={section.sectionNumber} className="snapshot-section">
+                      <h4>{section.sectionNumber}. {section.heading}</h4>
+                      {renderBlocksJSX(preview)}
+                      {truncated && <p className="snapshot-more">Continue reading in the full report…</p>}
+                    </div>
+                  );
+                })}
               </div>
 
               <div style={{ textAlign: 'center', margin: '20px 0' }}>

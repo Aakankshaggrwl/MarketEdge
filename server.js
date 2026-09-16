@@ -304,32 +304,41 @@ app.post('/api/generate-milestone-report', async (req, res) => {
 Client: ${briefContext}
 Scope: ${sow.engagement_summary}
 
-Respond with ONLY these sections separated by ---SECTION---. Follow the target length for each section — together they should total roughly 7,500-10,000 words:
+Respond with ONLY these sections separated by ---SECTION---. Follow the target length for each section — together they should total roughly 7,500-10,000 words. Structure each section using the "##", "###", "-", and "**bold**" conventions from your system instructions wherever they help a senior reader scan the section quickly — never as a bare list with no surrounding prose:
 
 TITLE: ${milestoneName}
 ---SECTION---
-EXECUTIVE_SUMMARY: [300-400 words. The headline conclusions and why they matter to this client specifically.]
+EXECUTIVE_SUMMARY: [300-400 words. Open with 1-2 orienting paragraphs on the headline conclusions and why they matter to this client specifically. Use "## " subsections only if the summary naturally splits into distinct headline conclusions.]
 ---SECTION---
-MARKET_CONTEXT: [600-800 words. The landscape this client is operating in — grounded in their industry, stage, and target market.]
+MARKET_CONTEXT: [600-800 words. The landscape this client is operating in, grounded in their industry, stage, and target market. Use 2-3 "## " subsections for the distinct parts of the landscape (e.g. market size, dynamics, timing), each opened with a paragraph and, where there are concrete figures worth calling out, followed by "- **Label:** ..." bullets.]
 ---SECTION---
-KEY_FINDINGS: [800-1000 words. 5-7 main insights, each explained in a full paragraph with supporting reasoning, not a one-line bullet.]
+KEY_FINDINGS: [800-1000 words. Structure as 5-7 "### " headed findings, each followed by a full paragraph with supporting reasoning — never a one-line bullet standing alone.]
 ---SECTION---
-DETAILED_ANALYSIS: [1800-2400 words. The core analytical work for this milestone. ${focus}]
+DETAILED_ANALYSIS: [1800-2400 words. The core analytical work for this milestone. ${focus} Use a "## " subsection for each required topic above, each opened with a paragraph and, where the topic is naturally enumerable (segments, competitors, etc.), followed by "- **Label:** ..." bullets.]
 ---SECTION---
-RECOMMENDATIONS: [1000-1200 words. 8-10 numbered, actionable recommendations, each with the rationale, expected impact, and concrete next steps.]
+RECOMMENDATIONS: [1000-1200 words. Structure as 8-10 "### " headed recommendations, each followed by a paragraph covering the rationale, expected impact, and concrete next step.]
 ---SECTION---
-IMPLEMENTATION_ROADMAP: [600-800 words. Sequenced phases or milestones for acting on the recommendations, with rough timing.]
+IMPLEMENTATION_ROADMAP: [600-800 words. Use "## " subsections for sequenced phases (e.g. "Phase 1: 0-30 Days"), each opened with a paragraph and followed by "- " bullets for the concrete actions in that phase.]
 ---SECTION---
-RISKS_AND_MITIGATIONS: [600-800 words. The main risks to this plan and how to mitigate each.]
+RISKS_AND_MITIGATIONS: [600-800 words. Structure as 4-6 "### " headed risks, each followed by a paragraph covering the risk and its mitigation.]
 ---SECTION---
-METRICS: [400-500 words. 5-7 key performance indicators to track, with target ranges and why each one matters.]`;
+METRICS: [400-500 words. Structure as 5-7 "### " headed KPIs, each followed by a short paragraph giving the target range and why it matters.]`;
 
     console.log("🔧 Sending API request with prompt length:", prompt.length);
 
     const message = await client.messages.create({
   model: "claude-sonnet-5",
   max_tokens: 16000,
-  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators. Be comprehensive and detailed — this report should be long and substantive, not a summary. Write in plain text only — no markdown formatting of any kind (no **bold**, no #headings, no bullet-point dashes). For inline sub-headers within a section, write the label as plain text followed by a colon, on its own line.`,
+  system: SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators between the sections listed in the prompt. Be comprehensive and detailed — this report should be long and substantive, not a summary.
+
+Formatting rules for the content inside each section — follow these exactly, they map directly to a renderer that builds proper headings and bullet lists from them:
+- Write in full paragraphs of connected prose, 3-6 sentences each. Never leave a heading with no paragraph under it, and never write a bare list with no surrounding prose.
+- Start a line with "## " for a named subsection heading — a short Title Case phrase, no numbering and no trailing colon (we add the numbers). Use it to break a long section into its logical parts, e.g. "## Customer Segments".
+- Start a line with "### " for a short, numbered talking-point heading within a subsection — a short Title Case phrase, no numbering (we add the numbers). Use it for enumerable items like findings, recommendations, risks, or KPIs, immediately followed by an explanatory paragraph.
+- Start a line with "- " for a bullet point. When a bullet states a discrete fact, lead with a short bold label using **Label:** followed by the explanation, e.g. "- **Target Segment:** mid-market retailers with 10-50 locations, most price-sensitive on logistics cost."
+- Use **bold** only around a genuinely load-bearing term, number, or name inside a sentence — never bold a whole sentence.
+- Never use single "#" headings, numbered markers you write yourself like "1." or "a)", or markdown tables.
+- Leave a blank line between every heading, paragraph, and bullet group.`,
   messages: [{ role: "user", content: prompt }],
 });
 
