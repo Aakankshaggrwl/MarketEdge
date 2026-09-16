@@ -1621,19 +1621,34 @@ ${buildReportBodyHTML(report, milestone, intake)}
       XLSX.writeFile(wb, `MarketEdge-${milestone.name.replace(/\s+/g, '-')}-Comparison.xlsx`);
     }
 
-    function MilestoneStep({ milestone, sow, intake, onNext, onPrev, isFirst, isLast }) {
-      const [report, setReport] = useState(null);
-      const [loading, setLoading] = useState(true);
+    // A cached report/matrix is only reused while this signature still matches the
+    // current SOW and intake — either changing invalidates every cached milestone entry
+    // whose signature was computed from the old values, forcing a fresh generation.
+    function computeReportSignature(sow, intake) {
+      return JSON.stringify({ sow, intake });
+    }
+
+    function MilestoneStep({ milestone, sow, intake, cachedEntry, onCacheUpdate, onNext, onPrev, isFirst, isLast }) {
+      const signature = computeReportSignature(sow, intake);
+      const isCompetitorMilestone = milestone.key === 'competitor';
+      const cacheHasReport = !!(cachedEntry && cachedEntry.sourceSignature === signature && cachedEntry.report);
+      const cacheHasMatrix = !!(cachedEntry && cachedEntry.sourceSignature === signature && cachedEntry.matrix);
+
+      const [report, setReport] = useState(() => cacheHasReport ? cachedEntry.report : null);
+      const [loading, setLoading] = useState(() => !cacheHasReport);
       const [error, setError] = useState(null);
 
-      const isCompetitorMilestone = milestone.key === 'competitor';
-      const [matrix, setMatrix] = useState(null);
-      const [matrixLoading, setMatrixLoading] = useState(false);
+      const [matrix, setMatrix] = useState(() => cacheHasMatrix ? cachedEntry.matrix : null);
+      const [matrixLoading, setMatrixLoading] = useState(() => isCompetitorMilestone && !cacheHasMatrix);
       const [matrixError, setMatrixError] = useState(null);
 
       useEffect(() => {
+        if (cacheHasReport) {
+          console.log("🎯 MilestoneStep using cached report for:", milestone.key);
+          return;
+        }
         let cancelled = false;
-        console.log("🎯 MilestoneStep mounted for:", milestone.key);
+        console.log("🎯 MilestoneStep generating report for:", milestone.key);
         setLoading(true);
         setError(null);
         setReport(null);
@@ -1647,13 +1662,14 @@ ${buildReportBodyHTML(report, milestone, intake)}
           } else {
             console.log("Report loaded successfully");
             setReport(result);
+            onCacheUpdate(milestone.key, { report: result, sourceSignature: signature, generatedAt: new Date().toISOString() });
           }
         });
         return () => { cancelled = true; };
       }, [milestone.key, sow, intake]);
 
       useEffect(() => {
-        if (!isCompetitorMilestone) return;
+        if (!isCompetitorMilestone || cacheHasMatrix) return;
         let cancelled = false;
         setMatrixLoading(true);
         setMatrixError(null);
@@ -1666,6 +1682,7 @@ ${buildReportBodyHTML(report, milestone, intake)}
             setMatrixError(result.error);
           } else {
             setMatrix(result);
+            onCacheUpdate(milestone.key, { matrix: result, sourceSignature: signature, generatedAt: new Date().toISOString() });
           }
         });
         return () => { cancelled = true; };
@@ -1799,15 +1816,31 @@ ${buildReportBodyHTML(report, milestone, intake)}
         { key: 'complete', label: 'Complete', completed: profile?.stage === 'complete' }
       ];
 
-      const handleUpdateProfile = (updates) => {
-        const newProfile = { ...profile, ...updates };
-        setProfile(newProfile);
+      // Persists via the functional setState form so two updates that fire close together
+      // (e.g. the report and competitor-matrix caches both resolving) always merge onto
+      // the latest state instead of one clobbering the other with a stale snapshot.
+      const persistProfile = (prev, updates) => {
+        const newProfile = { ...prev, ...updates };
         const profiles = storage.getProfiles();
-        const idx = profiles.businesses.findIndex(b => b.id === profile.id);
+        const idx = profiles.businesses.findIndex(b => b.id === newProfile.id);
         if (idx >= 0) {
           profiles.businesses[idx] = newProfile;
           storage.saveProfiles(profiles);
         }
+        return newProfile;
+      };
+
+      const handleUpdateProfile = (updates) => {
+        setProfile(prev => persistProfile(prev, updates));
+      };
+
+      const handleCacheUpdate = (milestoneKey, patch) => {
+        setProfile(prev => persistProfile(prev, {
+          milestoneReports: {
+            ...prev.milestoneReports,
+            [milestoneKey]: { ...(prev.milestoneReports?.[milestoneKey] || {}), ...patch }
+          }
+        }));
       };
 
       const handleStepClick = (stepKey) => {
@@ -1841,6 +1874,7 @@ ${buildReportBodyHTML(report, milestone, intake)}
           intake: null,
           sow: null,
           milestones: [],
+          milestoneReports: {},
           sowFeedback: [],
           currentMilestoneIndex: 0
         };
@@ -1897,6 +1931,8 @@ ${buildReportBodyHTML(report, milestone, intake)}
                   milestone={currentMilestone}
                   sow={profile.sow}
                   intake={profile.intake}
+                  cachedEntry={profile.milestoneReports?.[currentMilestone.key] || null}
+                  onCacheUpdate={handleCacheUpdate}
                   onNext={() => {
                     if (currentIndex >= MILESTONE_CATALOG.length - 1) {
                       handleUpdateProfile({ stage: 'complete' });
