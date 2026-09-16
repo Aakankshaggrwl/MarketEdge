@@ -380,5 +380,86 @@ Formatting rules for the content inside each section — follow these exactly, t
     res.status(500).json({ error: err.message || "Failed to generate report" });
   }
 });
+
+// The category-grouped column set for the competitor comparison matrix (Excel export).
+// Generic across industries — mirrors the shape of a real analyst comparison sheet
+// (company profile, financials, product/positioning, go-to-market, gap vs. this client).
+const COMPETITOR_MATRIX_COLUMNS = [
+  { key: "overview", label: "Overview", category: "Company Profile" },
+  { key: "location", label: "Headquarters / Region", category: "Company Profile" },
+  { key: "stage", label: "Stage / Founded", category: "Company Profile" },
+  { key: "revenue", label: "Estimated Revenue", category: "Financials" },
+  { key: "funding", label: "Total Funding Raised", category: "Financials" },
+  { key: "pricing_model", label: "Pricing Model", category: "Financials" },
+  { key: "price_point", label: "Price Point", category: "Financials" },
+  { key: "market_share", label: "Est. Market Share", category: "Financials" },
+  { key: "core_offering", label: "Core Offering", category: "Product & Positioning" },
+  { key: "key_strengths", label: "Key Strengths", category: "Product & Positioning" },
+  { key: "key_weaknesses", label: "Key Weaknesses", category: "Product & Positioning" },
+  { key: "target_segment", label: "Target Customer Segment", category: "Product & Positioning" },
+  { key: "gtm_channels", label: "Primary GTM Channels", category: "Go-To-Market" },
+  { key: "marketing_angle", label: "Marketing Angle", category: "Go-To-Market" },
+  { key: "growth_plan", label: "Stated Growth Plan", category: "Go-To-Market" },
+  { key: "where_strong", label: "Where They Are Strong vs. Us", category: "Competitive Gap" },
+  { key: "where_weak", label: "Where They Are Weak vs. Us", category: "Competitive Gap" },
+  { key: "differentiation", label: "Our Differentiation Opportunity", category: "Competitive Gap" },
+];
+
+// Generate the competitor comparison matrix (structured JSON, rendered client-side as an
+// Excel download). Only used for the Competitor Landscape milestone.
+app.post('/api/generate-competitor-matrix', async (req, res) => {
+  try {
+    const { sow, intake } = req.body;
+
+    if (!sow || !intake) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
+    const columnSpecJSON = JSON.stringify(COMPETITOR_MATRIX_COLUMNS);
+
+    const prompt = `You are a senior strategy consultant building a competitor comparison matrix for a client.
+
+Client: ${briefContext}
+Scope: ${sow.engagement_summary}
+
+Identify real, specific, named competitors relevant to THIS client's industry and target market — both direct and indirect. Do not invent generic placeholder names; only include companies you are confident are real. Include as many as are genuinely relevant, up to a maximum of 15 — prioritize relevance over hitting exactly 15, and do not pad with weak or irrelevant entries.
+
+For every competitor, fill in a concise, specific value (1-2 sentences, never empty — write "Not disclosed" if a figure is genuinely unavailable, never leave a field blank) for each of these columns:
+${columnSpecJSON}
+
+Respond with ONLY valid JSON (no markdown, no fences):
+{"columns": ${columnSpecJSON}, "competitors": [{"name": "Company Name", "values": {"overview": "...", "location": "...", "stage": "...", "revenue": "...", "funding": "...", "pricing_model": "...", "price_point": "...", "market_share": "...", "core_offering": "...", "key_strengths": "...", "key_weaknesses": "...", "target_segment": "...", "gtm_channels": "...", "marketing_angle": "...", "growth_plan": "...", "where_strong": "...", "where_weak": "...", "differentiation": "..."}}]}`;
+
+    const message = await client.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 8000,
+      system: SENIOR_VOICE + ` Respond with ONLY valid JSON matching the exact structure requested. No markdown, no code fences, no prose before or after the JSON. Every competitor object must include a value for every column key listed — never omit a key.`,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = message.content.find(block => block.type === "text");
+    const text = textBlock?.text || "";
+
+    if (!text) {
+      return res.status(500).json({ error: "Empty response from Claude" });
+    }
+
+    const matrix = safeParseJSON(text);
+
+    if (!matrix?.competitors || !Array.isArray(matrix.competitors) || matrix.competitors.length === 0) {
+      return res.status(500).json({ error: "Invalid competitor matrix: missing or empty competitors" });
+    }
+
+    matrix.columns = COMPETITOR_MATRIX_COLUMNS;
+    matrix.competitors = matrix.competitors.slice(0, 15);
+
+    res.status(200).json({ success: true, matrix });
+  } catch (err) {
+    console.error("Competitor matrix generation error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to generate competitor matrix" });
+  }
+});
+
 export default app;
 
