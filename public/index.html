@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MarketEdge — AI Strategy Portal</title>
-  
+
   <!-- Libraries -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -69,6 +69,42 @@
 
     .sidebar-step:hover {
       background: rgba(255,255,255,0.2);
+    }
+
+    .sidebar-business-info {
+      background: rgba(255,255,255,0.1);
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      border-left: 3px solid #14B8A6;
+    }
+
+    .sidebar-business-name {
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .sidebar-business-stage {
+      color: #ccc;
+      font-size: 11px;
+    }
+
+    .sidebar-business-switcher {
+      background: rgba(255,255,255,0.15);
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .sidebar-business-switcher:hover {
+      background: rgba(255,255,255,0.25);
     }
 
     .main-content {
@@ -659,35 +695,35 @@
     }
 
     async function generateMilestoneReport(milestoneKey, milestoneName, sow, intake, onReport) {
-  try {
-    console.log("🎯 REPORT REQUEST:", { milestoneKey, milestoneName });
+      try {
+        console.log("🎯 REPORT REQUEST:", { milestoneKey, milestoneName });
 
-    const response = await fetch('/api/generate-milestone-report', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ milestoneKey, milestoneName, sow, intake })
-    });
+        const response = await fetch('/api/generate-milestone-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ milestoneKey, milestoneName, sow, intake })
+        });
 
-    console.log("📡 HTTP Response status:", response.status);
+        console.log("📡 HTTP Response status:", response.status);
 
-    const data = await response.json();
-    console.log("📦 FULL RESPONSE:", data);
+        const data = await response.json();
+        console.log("📦 FULL RESPONSE:", data);
 
-    if (!response.ok) {
-      onReport({ error: data.error || "Server error" });
-      return;
+        if (!response.ok) {
+          onReport({ error: data.error || "Server error" });
+          return;
+        }
+
+        if (data.success && data.report) {
+          onReport(data.report);
+        } else {
+          onReport({ error: "Invalid response structure" });
+        }
+      } catch (err) {
+        console.error("❌ FETCH ERROR:", err);
+        onReport({ error: `Network error: ${err.message}` });
+      }
     }
-
-    if (data.success && data.report) {
-      onReport(data.report);
-    } else {
-      onReport({ error: "Invalid response structure" });
-    }
-  } catch (err) {
-    console.error("❌ FETCH ERROR:", err);
-    onReport({ error: `Network error: ${err.message}` });
-  }
-}
 
     async function generateCompetitorMatrix(sow, intake, onMatrix) {
       try {
@@ -763,20 +799,24 @@
         <div className="view">
           <h1>MarketEdge</h1>
           <p className="subtitle">Select or Create a Business Strategy</p>
-          
+
           <div className="grid">
             {profiles.businesses.map((business) => (
               <div key={business.id} className="business-card" onClick={() => onSelectBusiness(business.id)}>
                 <h3>{business.name}</h3>
                 <p>Stage: {business.stage || 'Not started'}</p>
-                <p>Created: {new Date(business.createdAt).toLocaleDateString()}</p>
+                <p>Milestones: {business.currentMilestoneIndex || 0} / {MILESTONE_CATALOG.length}</p>
+                <p style={{ fontSize: '12px', color: '#999', marginTop: '8px' }}>
+                  Created: {new Date(business.createdAt).toLocaleDateString()}
+                </p>
               </div>
             ))}
           </div>
 
           {profiles.businesses.length < 2 && (
             <div className="card">
-              <h2>New Business</h2>
+              <h2>Create New Business</h2>
+              <p style={{ color: '#666', marginBottom: '16px' }}>You can manage up to 2 businesses</p>
               <input id="newBusinessName" type="text" placeholder="Business Name" />
               <button onClick={() => {
                 const name = document.getElementById('newBusinessName').value;
@@ -786,16 +826,31 @@
                 } else {
                   alert('Enter a business name');
                 }
-              }}>Create</button>
+              }}>Create Business</button>
+            </div>
+          )}
+
+          {profiles.businesses.length === 2 && (
+            <div className="card" style={{ background: '#F0F9F8', borderLeft: '4px solid #0F766E' }}>
+              <p style={{ color: '#0F766E', fontWeight: 600 }}>✓ You have 2 businesses. Click above to select and continue.</p>
             </div>
           )}
         </div>
       );
     }
 
-    function ProgressSidebar({ currentStep, onStepClick, allSteps }) {
+    function ProgressSidebar({ currentStep, onStepClick, allSteps, currentBusinessName, onSwitchBusiness }) {
       return (
         <div className="sidebar">
+          <div className="sidebar-business-info">
+            <div className="sidebar-business-name">📋 {currentBusinessName}</div>
+            <div className="sidebar-business-stage" id="currentStageLabel">Strategy in progress</div>
+          </div>
+
+          <button className="sidebar-business-switcher" onClick={onSwitchBusiness}>
+            🔄 Switch Business
+          </button>
+
           <h3>Progress</h3>
           {allSteps.map((step, idx) => (
             <div
@@ -1033,14 +1088,10 @@
         .replace(/'/g, '&#39;');
     }
 
-    // Escapes text, then converts markdown **bold** into real <strong> tags.
-    // Safe because escaping runs first — the ** that survives can't be an injected tag.
     function formatContentHtml(str) {
       return escapeHtml(str).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     }
 
-    // React-safe equivalent for JSX children: splits on **bold** and renders <strong>,
-    // everything else as plain text nodes (React escapes these automatically).
     function renderFormattedText(str) {
       if (!str) return null;
       return String(str).split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
@@ -1050,12 +1101,6 @@
       );
     }
 
-    // ============ REPORT CONTENT STRUCTURE ============
-    // The model writes each section's content as lightweight markdown: "## " subsection
-    // headings, "### " numbered talking-point headings, "- " bullets (optionally leading
-    // with a **bold** label), and inline **bold** within prose. This parses that into a
-    // block list that every renderer (on-screen preview, print, PDF) consumes the same way,
-    // so structure and numbering never drift between the three.
     function stripInlineBold(text) {
       return String(text).replace(/\*\*([^*]+)\*\*/g, '$1').trim();
     }
@@ -1112,9 +1157,6 @@
       return blocks;
     }
 
-    // Adds sequential numbering: sections are numbered 1..N; "## " subsections become
-    // N.1, N.2 within their section; "### " mini-headings reset to 1, 2, 3 under each
-    // subsection (or under the section itself, if it has no "## " subsections).
     function parseAndNumberReport(report) {
       const sections = (report?.sections || []).map((s, sIdx) => {
         const blocks = parseReportBlocks(s.content);
@@ -1135,7 +1177,6 @@
       return { title: report?.title, sections };
     }
 
-    // Renders a block list as JSX for the on-screen preview.
     function renderBlocksJSX(blocks) {
       return blocks.map((b, i) => {
         if (b.type === 'h3') return <div key={i} className="block-sub-heading">{b.number} {b.text}</div>;
@@ -1149,8 +1190,6 @@
       });
     }
 
-    // Renders a block list as an HTML string for print/PDF-source markup. Safe because
-    // formatContentHtml escapes every dynamic value before converting **bold** to <strong>.
     function blocksToHtml(blocks) {
       return blocks.map(b => {
         if (b.type === 'h3') return `<h3 class="pdf-sub-heading">${escapeHtml(b.number + ' ' + b.text)}</h3>`;
@@ -1160,9 +1199,6 @@
       }).join('\n');
     }
 
-    // Builds a full standalone HTML document string: cover page + one page per section,
-    // each carrying a running header (MarketEdge wordmark + report title) and footer
-    // (confidentiality line + page label). Used for both Print and the hidden PDF-export node.
     const REPORT_FONT = "'Calibri', 'Carlito', 'Segoe UI', Arial, sans-serif";
 
     const REPORT_STYLES = `
@@ -1226,8 +1262,6 @@
   }
 `;
 
-    // Builds just the cover + section page markup (no <html>/<head>/<body> wrapper) —
-    // safe to inject via dangerouslySetInnerHTML since every dynamic value is escaped.
     function buildReportBodyHTML(report, milestone, intake) {
       const title = escapeHtml(report.title || milestone.name);
       const preparedFor = [intake?.industry, intake?.market].filter(Boolean).map(escapeHtml).join(' — ');
@@ -1266,7 +1300,6 @@
       return `${coverPage}\n${sectionPages}`;
     }
 
-    // Full standalone document for the Print window.
     function buildReportHTML(report, milestone, intake) {
       const title = escapeHtml(report.title || milestone.name);
       return `<!DOCTYPE html>
@@ -1285,11 +1318,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
 </html>`;
     }
 
-    // ============ REPORT PDF (vector text, not a DOM screenshot) ============
-    // Generates the PDF by drawing real text with jsPDF directly, instead of rasterizing
-    // the DOM with html2canvas. This gives proper justified alignment, a much smaller file,
-    // selectable/searchable text, and avoids an entire class of canvas-capture bugs
-    // (blank/zero-height captures, stacking-context bleed-through, edge clipping).
     const PDF_NAVY = [16, 42, 67];
     const PDF_GOLD = [201, 162, 39];
     const PDF_TEAL = [15, 118, 110];
@@ -1385,9 +1413,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
       doc.text(dateStr, cx, y, { align: 'center' });
     }
 
-    // Splits raw text (which may contain **bold** spans) into a flat word list carrying
-    // a per-word bold flag — the unit jsPDF needs to lay out and justify mixed-style text,
-    // since its built-in align:'justify' only works on a single uniform-font string.
     function pdfTokenizeBoldWords(text) {
       const parts = String(text).split(/(\*\*[^*]+\*\*)/g).filter(p => p !== '');
       const words = [];
@@ -1405,7 +1430,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
       return doc.getTextWidth(word);
     }
 
-    // Greedy line-wrap over the word list, respecting each word's own bold width.
     function pdfWrapWords(doc, words, maxWidth, fontSize) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(fontSize);
@@ -1429,10 +1453,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
       return lines;
     }
 
-    // Draws one wrapped line, switching font per word. When justify is true and the line
-    // has more than one word, the inter-word gap is stretched so the line's right edge
-    // lands exactly on maxWidth — manual justification, since built-in align:'justify'
-    // can't mix bold and normal runs in one call.
     function pdfDrawWordLine(doc, words, x, y, maxWidth, fontSize, justify, color) {
       doc.setFontSize(fontSize);
       doc.setFont('helvetica', 'normal');
@@ -1453,8 +1473,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
       });
     }
 
-    // Draws one section's numbered heading and its block list (subsections, mini-headings,
-    // paragraphs, bullets), paginating as content overflows the page.
     function pdfRenderSection(doc, reportTitle, sectionNumber, heading, blocks) {
       pdfDrawHeader(doc, reportTitle);
       let y = PDF_MARGIN_TOP + 18;
@@ -1562,9 +1580,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
       doc.save(`MarketEdge-${milestone.name.replace(/\s+/g, '-')}.pdf`);
     }
 
-    // ============ COMPETITOR COMPARISON (Excel) ============
-    // Columns whose values run long (a sentence or two) get a wider column than a short
-    // figure like "Est. Market Share" — keeps the sheet scannable without wrapping badly.
     const XLSX_WIDE_COLUMN_KEYS = new Set([
       'overview', 'core_offering', 'key_strengths', 'key_weaknesses', 'target_segment',
       'where_strong', 'where_weak', 'differentiation', 'marketing_angle', 'growth_plan', 'gtm_channels',
@@ -1584,9 +1599,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
       const aoa = [headerRow1, headerRow2, ...dataRows];
       const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-      // Merge the "Company Name" header vertically across both header rows, and merge
-      // each run of consecutive same-category columns across the top header row —
-      // mirrors a real analyst comparison sheet's grouped-column layout.
       const merges = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }];
       let runStart = 0;
       for (let i = 1; i <= columns.length; i++) {
@@ -1621,9 +1633,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
       XLSX.writeFile(wb, `MarketEdge-${milestone.name.replace(/\s+/g, '-')}-Comparison.xlsx`);
     }
 
-    // A cached report/matrix is only reused while this signature still matches the
-    // current SOW and intake — either changing invalidates every cached milestone entry
-    // whose signature was computed from the old values, forcing a fresh generation.
     function computeReportSignature(sow, intake) {
       return JSON.stringify({ sow, intake });
     }
@@ -1816,9 +1825,6 @@ ${buildReportBodyHTML(report, milestone, intake)}
         { key: 'complete', label: 'Complete', completed: profile?.stage === 'complete' }
       ];
 
-      // Persists via the functional setState form so two updates that fire close together
-      // (e.g. the report and competitor-matrix caches both resolving) always merge onto
-      // the latest state instead of one clobbering the other with a stale snapshot.
       const persistProfile = (prev, updates) => {
         const newProfile = { ...prev, ...updates };
         const profiles = storage.getProfiles();
@@ -1885,6 +1891,10 @@ ${buildReportBodyHTML(report, milestone, intake)}
         setView('engagement');
       };
 
+      const handleSwitchBusiness = () => {
+        setView('business-selector');
+      };
+
       if (view === 'login') {
         return <LoginView onLogin={handleLogin} />;
       }
@@ -1903,6 +1913,8 @@ ${buildReportBodyHTML(report, milestone, intake)}
               currentStep={profile.stage === 'intake' ? 'intake' : profile.stage === 'sow_review' ? 'sow_review' : `milestone-${currentIndex}`}
               onStepClick={handleStepClick}
               allSteps={allSteps}
+              currentBusinessName={profile.name}
+              onSwitchBusiness={handleSwitchBusiness}
             />
             <div className="main-content">
               {profile.stage === 'intake' && (
