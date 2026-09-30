@@ -1652,43 +1652,652 @@ ${buildReportBodyHTML(report, milestone, intake)}
     }
 
     // ============ FINANCIAL MODEL (Excel) ============
+    // Builds a fully formula-linked, multi-sheet workbook — Assumptions feeds every other
+    // sheet via live Excel formulas (Assumptions!$C$n style), so changing one blue input
+    // cell recalculates the whole model, the same way a hand-built analyst model works.
+    // SheetJS writes formulas via a cell's `.f` property; `.v` is a pre-computed display
+    // value (mirrored in JS) so the sheet doesn't look blank before Excel recalculates.
+    const XLSX_COLS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    function xlCol(idx) { return XLSX_COLS[idx]; }
+    function xlAddr(colIdx, row) { return xlCol(colIdx) + row; }
+    function xlFormula(ws, addr, formula, value) {
+      ws[addr] = { t: 'n', v: Number.isFinite(value) ? value : 0, f: formula };
+    }
+    const YEAR_COLS = [2, 3, 4, 5, 6]; // C,D,E,F,G — every sheet uses these 5 columns for Year 1-5
+
+    function buildAssumptionsSheet(model) {
+      const aoa = [];
+      const refs = {};
+      const push = (row) => { aoa.push(row); return aoa.length; };
+
+      push(['DRIZZLA-STYLE FINANCIAL MODEL — ASSUMPTIONS']);
+      push(['This sheet drives the whole workbook. Every other sheet computes live from these cells — change a value here and the model recalculates.']);
+      push([]);
+
+      push([null, 'A. PRIMARY MARKET']);
+      refs.primarySize = push([null, 'Primary Market Size — Year 1 (USD M)', model.market?.primaryMarketSizeUSDM_Y1 ?? 0, null, null, null, null, model.market?.primaryMarketName || '']);
+      refs.primaryCAGR = push([null, 'Primary Market CAGR', model.market?.primaryMarketCAGR ?? 0, null, null, null, null, 'Compound annual growth rate applied to the primary market size above.']);
+      push([]);
+
+      push([null, 'B. GLOBAL MARKET']);
+      refs.globalSize = push([null, 'Global Market Size — Year 1 (USD M)', model.market?.globalMarketSizeUSDM_Y1 ?? 0, null, null, null, null, model.market?.globalMarketName || '']);
+      refs.globalCAGR = push([null, 'Global Market CAGR', model.market?.globalMarketCAGR ?? 0, null, null, null, null, '']);
+      push([]);
+
+      push([null, 'C. SEGMENT FILTERS (multiply together for the combined SAM filter)']);
+      const filters = model.segmentFilters?.length ? model.segmentFilters : [{ label: 'Addressable share', percent: 1, rationale: '' }];
+      const filterRows = filters.map(f => push([null, f.label || '', f.percent ?? 0, null, null, null, null, f.rationale || '']));
+      const filterCells = filterRows.map(r => `$C$${r}`);
+      const combinedFilterValue = filters.reduce((acc, f) => acc * (f.percent ?? 0), 1);
+      refs.combinedFilter = push([null, 'Combined Filter (product of filters above)']);
+      // Formula for this cell is applied after aoa_to_sheet below (needs `ws` to exist).
+      push([]);
+
+      push([null, 'D. ADDITIONAL SAM PREMIUM']);
+      refs.samPremium = push([null, model.samPremium?.label || 'Additional SAM premium', model.samPremium?.amountUSDM ?? 0, null, null, null, null, model.samPremium?.rationale || '']);
+      push([]);
+
+      push([null, 'E. PRICING TIERS (Monthly, USD)']);
+      (model.pricingTiers?.length ? model.pricingTiers : []).forEach(t => {
+        push([null, t.name || '', t.monthlyPriceUSD ?? 0, null, null, null, null, t.rationale || '']);
+      });
+      push([]);
+
+      push([null, 'F. BLENDED ACV BY YEAR (USD / client / year)']);
+      const acvByYear = model.blendedACVByYear?.length === 5 ? model.blendedACVByYear : [0, 0, 0, 0, 0];
+      refs.acv = push([null, 'Blended ACV', ...acvByYear, 'Reflects module/tier upsell trajectory over 5 years.']);
+      push([]);
+
+      push([null, 'G. CLIENT TARGETS BY YEAR (end of year)']);
+      const clientsByYear = model.clientTargetsByYear?.length === 5 ? model.clientTargetsByYear : [0, 0, 0, 0, 0];
+      refs.clients = push([null, 'Paying Clients', ...clientsByYear, '']);
+      push([]);
+
+      push([null, 'H. RETENTION & MARGIN']);
+      refs.churn = push([null, 'Annual Churn Rate', model.churnRate ?? 0]);
+      refs.nrr = push([null, 'Net Revenue Retention (NRR)', model.nrr ?? 0]);
+      refs.margin = push([null, 'Gross Margin', model.grossMargin ?? 0]);
+      push([]);
+
+      push([null, 'I. CUSTOMER SEGMENTS']);
+      push([null, 'Segment', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5', 'Entry ACV', 'Full Suite ACV', 'Notes']);
+      refs.segmentsStart = aoa.length + 1;
+      const segments = model.segments || [];
+      segments.forEach(s => {
+        const c = s.clientsByYear?.length === 5 ? s.clientsByYear : [0, 0, 0, 0, 0];
+        push([null, s.name || '', ...c, s.entryACV ?? 0, s.fullSuiteACV ?? 0, s.icpNote || '']);
+      });
+      refs.segmentsEnd = aoa.length;
+      push([]);
+
+      push([null, 'J. EXPANSION GEOGRAPHIES']);
+      push([null, 'Market', 'Region', 'TAM % of Global', 'CAGR', 'Accessible %', 'Reg. Premium ($M)', 'Entry Timing', 'Y1 Clients', 'Y2 Clients', 'Y3 Clients', 'Y4 Clients', 'Y5 Clients', 'Y1 ACV', 'Y2 ACV', 'Y3 ACV', 'Y4 ACV', 'Y5 ACV', 'Driver']);
+      refs.geoStart = aoa.length + 1;
+      const geographies = model.geographies || [];
+      geographies.forEach(g => {
+        const cl = g.clientsByYear?.length === 5 ? g.clientsByYear : [0, 0, 0, 0, 0];
+        const av = g.acvByYear?.length === 5 ? g.acvByYear : [0, 0, 0, 0, 0];
+        push([null, g.name || '', g.region || '', g.tamPctOfGlobal ?? 0, g.cagr ?? 0, g.accessiblePct ?? 0, g.regulatoryPremiumUSDM ?? 0, g.entryTiming || '', ...cl, ...av, g.regulatoryDriver || '']);
+      });
+      refs.geoEnd = aoa.length;
+      push([]);
+
+      push([null, 'K. FUNDING & VALUATION ASSUMPTIONS']);
+      refs.revenueMultiple = push([null, 'Revenue Multiple (x ARR)', model.funding?.revenueMultiple ?? 0]);
+      refs.equityPct = push([null, 'Equity % Offered in Raise', model.funding?.equityPctForRaise ?? 0]);
+      refs.minRaise = push([null, 'Minimum Raise (USD)', model.funding?.minimumRaiseUSD ?? 0]);
+      const cacByYear = model.funding?.cacByYear?.length === 5 ? model.funding.cacByYear : [0, 0, 0, 0, 0];
+      refs.cac = push([null, 'CAC by Year', ...cacByYear]);
+      refs.ltvHorizon = push([null, 'LTV Horizon (years)', model.funding?.ltvHorizonYears ?? 3]);
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      xlFormula(ws, `C${refs.combinedFilter}`, `PRODUCT(${filterCells.join(',')})`, combinedFilterValue);
+      refs.combinedFilterValue = combinedFilterValue;
+      refs.model = model;
+
+      ws['!cols'] = [{ wch: 2 }, { wch: 34 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 55 }];
+      return { ws, refs, model };
+    }
+
+    function buildTamSamSomSheet(refs) {
+      const aoa = [];
+      const push = (row) => { aoa.push(row); return aoa.length; };
+      push(['MARKET FUNNEL — TAM / SAM / SOM (all formula-driven from Assumptions)']);
+      push([]);
+      push([null, 'Metric', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5']);
+      const rTam = push([null, 'TAM — Total Addressable Market ($M)']);
+      const rSam = push([null, 'SAM — Serviceable Addressable Market ($M)']);
+      const rSamPct = push([null, '  SAM as % of TAM']);
+      const rSom = push([null, 'SOM — Serviceable Obtainable Market ($M)']);
+      const rSomPct = push([null, '  SOM as % of SAM']);
+      push([]);
+      push([null, 'OPERATING METRICS']);
+      const rClients = push([null, 'Paying Clients (end of year)']);
+      const rAcv = push([null, 'Blended ACV per Client (USD/year)']);
+      const rArr = push([null, 'ARR — Annual Recurring Revenue (USD)']);
+      const rArrGrowth = push([null, '  YoY ARR growth']);
+      const rGP = push([null, 'Gross Profit (USD)']);
+      const rMonthly = push([null, 'Monthly ARR (run-rate, USD)']);
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const N = { rTam, rSam, rSamPct, rSom, rSomPct, rClients, rAcv, rArr, rArrGrowth, rGP, rMonthly };
+
+      let tamVals = [], samVals = [], somVals = [], arrVals = [];
+      YEAR_COLS.forEach((col, i) => {
+        const L = xlCol(col);
+        const tamF = i === 0 ? `Assumptions!$C$${refs.primarySize}` : `Assumptions!$C$${refs.primarySize}*(1+Assumptions!$C$${refs.primaryCAGR})^${i}`;
+        const tamV = (refs.model.market?.primaryMarketSizeUSDM_Y1 ?? 0) * Math.pow(1 + (refs.model.market?.primaryMarketCAGR ?? 0), i);
+        xlFormula(ws, xlAddr(col, N.rTam), tamF, tamV);
+        tamVals.push(tamV);
+
+        const samF = `${L}${N.rTam}*Assumptions!$C$${refs.combinedFilter}+Assumptions!$C$${refs.samPremium}`;
+        const samV = tamV * refs.combinedFilterValue + (refs.model.samPremium?.amountUSDM ?? 0);
+        xlFormula(ws, xlAddr(col, N.rSam), samF, samV);
+        samVals.push(samV);
+
+        xlFormula(ws, xlAddr(col, N.rSamPct), `${L}${N.rSam}/${L}${N.rTam}`, samV / (tamV || 1));
+
+        const clientsC = refs.model.clientTargetsByYear?.[i] ?? 0;
+        const acvC = refs.model.blendedACVByYear?.[i] ?? 0;
+        const somF = `Assumptions!${L}$${refs.clients}*Assumptions!${L}$${refs.acv}/1000000`;
+        const somV = (clientsC * acvC) / 1000000;
+        xlFormula(ws, xlAddr(col, N.rSom), somF, somV);
+        somVals.push(somV);
+        xlFormula(ws, xlAddr(col, N.rSomPct), `${L}${N.rSom}/${L}${N.rSam}`, samV ? somV / samV : 0);
+
+        xlFormula(ws, xlAddr(col, N.rClients), `Assumptions!${L}$${refs.clients}`, clientsC);
+        xlFormula(ws, xlAddr(col, N.rAcv), `Assumptions!${L}$${refs.acv}`, acvC);
+        const arrF = `${L}${N.rClients}*${L}${N.rAcv}`;
+        const arrV = clientsC * acvC;
+        xlFormula(ws, xlAddr(col, N.rArr), arrF, arrV);
+        arrVals.push(arrV);
+
+        if (i === 0) {
+          ws[xlAddr(col, N.rArrGrowth)] = { t: 's', v: '—' };
+        } else {
+          const prevL = xlCol(YEAR_COLS[i - 1]);
+          xlFormula(ws, xlAddr(col, N.rArrGrowth), `${L}${N.rArr}/${prevL}${N.rArr}-1`, arrVals[i - 1] ? (arrV / arrVals[i - 1] - 1) : 0);
+        }
+
+        xlFormula(ws, xlAddr(col, N.rGP), `${L}${N.rArr}*Assumptions!$C$${refs.margin}`, arrV * (refs.model.grossMargin ?? 0));
+        xlFormula(ws, xlAddr(col, N.rMonthly), `${L}${N.rArr}/12`, arrV / 12);
+      });
+
+      ws['!cols'] = [{ wch: 2 }, { wch: 38 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+      return { ws, arrRow: N.rArr, arrVals };
+    }
+
+    function buildRevenueBridgeSheet(refs) {
+      const aoa = [];
+      const push = (row) => { aoa.push(row); return aoa.length; };
+      push(['ARR WATERFALL — opening, new, expansion and churn reconciled to closing ARR each year']);
+      push([]);
+      push([null, 'Metric', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5']);
+      const rClients = push([null, 'Clients (end of year)']);
+      const rAcv = push([null, 'Blended ACV (USD/year)']);
+      const rClosing = push([null, 'Closing ARR (USD)']);
+      push([]);
+      push([null, 'WATERFALL DECOMPOSITION']);
+      const rOpening = push([null, 'Opening ARR']);
+      const rNewClients = push([null, '  New clients']);
+      const rNew = push([null, 'New ARR']);
+      const rExpansion = push([null, 'Expansion ARR (upsell/downsell, balancing item)']);
+      const rChurn = push([null, 'Churn ARR (informational)']);
+      const rValidation = push([null, '  Validation (Opening retained + New + Expansion − Closing, should be 0)']);
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const N = { rClients, rAcv, rClosing, rOpening, rNewClients, rNew, rExpansion, rChurn, rValidation };
+      const churn = refs.model.churnRate ?? 0;
+
+      let closingVals = [];
+      YEAR_COLS.forEach((col, i) => {
+        const L = xlCol(col);
+        const clientsC = refs.model.clientTargetsByYear?.[i] ?? 0;
+        const acvC = refs.model.blendedACVByYear?.[i] ?? 0;
+        xlFormula(ws, xlAddr(col, N.rClients), `Assumptions!${L}$${refs.clients}`, clientsC);
+        xlFormula(ws, xlAddr(col, N.rAcv), `Assumptions!${L}$${refs.acv}`, acvC);
+        const closingV = clientsC * acvC;
+        xlFormula(ws, xlAddr(col, N.rClosing), `${L}${N.rClients}*${L}${N.rAcv}`, closingV);
+        closingVals.push(closingV);
+
+        let openingV;
+        if (i === 0) {
+          ws[xlAddr(col, N.rOpening)] = { t: 'n', v: 0 };
+          openingV = 0;
+        } else {
+          const prevL = xlCol(YEAR_COLS[i - 1]);
+          xlFormula(ws, xlAddr(col, N.rOpening), `${prevL}${N.rClosing}`, closingVals[i - 1]);
+          openingV = closingVals[i - 1];
+        }
+
+        const prevClients = i === 0 ? 0 : (refs.model.clientTargetsByYear?.[i - 1] ?? 0);
+        const newClientsV = Math.max(0, clientsC - Math.round(prevClients * (1 - churn)));
+        const newClientsF = i === 0
+          ? `${L}${N.rClients}`
+          : `MAX(0,${L}${N.rClients}-ROUND(${xlCol(YEAR_COLS[i - 1])}${N.rClients}*(1-Assumptions!$C$${refs.churn}),0))`;
+        xlFormula(ws, xlAddr(col, N.rNewClients), newClientsF, newClientsV);
+
+        const newArrV = newClientsV * acvC;
+        xlFormula(ws, xlAddr(col, N.rNew), `${L}${N.rNewClients}*${L}${N.rAcv}`, newArrV);
+
+        const retainedV = openingV * (1 - churn);
+        const expansionV = closingV - retainedV - newArrV;
+        xlFormula(ws, xlAddr(col, N.rExpansion), `${L}${N.rClosing}-${L}${N.rOpening}*(1-Assumptions!$C$${refs.churn})-${L}${N.rNew}`, expansionV);
+
+        const churnArrV = -openingV * churn;
+        xlFormula(ws, xlAddr(col, N.rChurn), `-${L}${N.rOpening}*Assumptions!$C$${refs.churn}`, churnArrV);
+
+        xlFormula(ws, xlAddr(col, N.rValidation), `${L}${N.rOpening}*(1-Assumptions!$C$${refs.churn})+${L}${N.rNew}+${L}${N.rExpansion}-${L}${N.rClosing}`, retainedV + newArrV + expansionV - closingV);
+      });
+
+      ws['!cols'] = [{ wch: 2 }, { wch: 52 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+      return { ws };
+    }
+
+    function buildSegmentsGeoSheet(refs, tamSamSom) {
+      const aoa = [];
+      const push = (row) => { aoa.push(row); return aoa.length; };
+      push(['SEGMENT & GEOGRAPHY BREAKDOWN — allocations of the total ARR by customer segment and by expansion market']);
+      push([]);
+      push([null, 'SEGMENT ARR MATRIX ($, per segment ACV = average of entry and full-suite ACV)']);
+      push([null, 'Segment', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5']);
+      const segStartRow = aoa.length + 1;
+      const segments = refs.model.segments || [];
+      segments.forEach(s => push([null, s.name || '']));
+      const segTotalRow = segments.length ? push([null, 'TOTAL SEGMENT ARR']) : null;
+      push([]);
+
+      push([null, 'GEOGRAPHY TAM / SAM / ARR ($M for TAM & SAM, $ for ARR)']);
+      push([null, 'Market — TAM', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5']);
+      const geographies = refs.model.geographies || [];
+      const geoTamRows = geographies.map(g => push([null, g.name || '']));
+      const geoTamTotalRow = geographies.length ? push([null, 'TOTAL INTERNATIONAL TAM ($M)']) : null;
+      push([]);
+      push([null, 'Market — SAM', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5']);
+      const geoSamRows = geographies.map(g => push([null, g.name || '']));
+      const geoSamTotalRow = geographies.length ? push([null, 'TOTAL INTERNATIONAL SAM ($M)']) : null;
+      push([]);
+      push([null, 'Market — ARR', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5']);
+      const geoArrRows = geographies.map(g => push([null, g.name || '']));
+      const geoArrTotalRow = geographies.length ? push([null, 'TOTAL INTERNATIONAL ARR']) : null;
+      push([]);
+      push([null, 'GRAND TOTAL — PRIMARY MARKET ARR + INTERNATIONAL ARR']);
+      const grandTotalRow = push([null, 'Grand Total ARR']);
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+      YEAR_COLS.forEach((col, i) => {
+        const L = xlCol(col);
+
+        segments.forEach((s, idx) => {
+          const r = segStartRow + idx;
+          const clientsC = s.clientsByYear?.[i] ?? 0;
+          const acvCell = `Assumptions!$H$${refs.segmentsStart + idx}`;
+          const acvCell2 = `Assumptions!$I$${refs.segmentsStart + idx}`;
+          const acvAvg = ((s.entryACV ?? 0) + (s.fullSuiteACV ?? 0)) / 2;
+          const clientsF = `Assumptions!${L}$${refs.segmentsStart + idx}`;
+          const valueF = `${clientsF}*AVERAGE(${acvCell},${acvCell2})`;
+          xlFormula(ws, xlAddr(col, r), valueF, clientsC * acvAvg);
+        });
+        if (segTotalRow) {
+          const range = segments.map((_, idx) => xlAddr(col, segStartRow + idx)).join(',');
+          const totalV = segments.reduce((acc, s) => acc + (s.clientsByYear?.[i] ?? 0) * (((s.entryACV ?? 0) + (s.fullSuiteACV ?? 0)) / 2), 0);
+          xlFormula(ws, xlAddr(col, segTotalRow), `SUM(${range})`, totalV);
+        }
+
+        let geoTamTotalV = 0, geoSamTotalV = 0, geoArrTotalV = 0;
+        geographies.forEach((g, idx) => {
+          const geoRowIdx = refs.geoStart + idx;
+          const tamPct = g.tamPctOfGlobal ?? 0, cagr = g.cagr ?? 0, accessPct = g.accessiblePct ?? 0, regPrem = g.regulatoryPremiumUSDM ?? 0;
+          const globalSizeV = refs.model.market?.globalMarketSizeUSDM_Y1 ?? 0;
+
+          const tamF = i === 0
+            ? `Assumptions!$C$${refs.globalSize}*Assumptions!$D$${geoRowIdx}`
+            : `Assumptions!$C$${refs.globalSize}*Assumptions!$D$${geoRowIdx}*(1+Assumptions!$E$${geoRowIdx})^${i}`;
+          const tamV = globalSizeV * tamPct * Math.pow(1 + cagr, i);
+          xlFormula(ws, xlAddr(col, geoTamRows[idx]), tamF, tamV);
+          geoTamTotalV += tamV;
+
+          const samF = `${L}${geoTamRows[idx]}*Assumptions!$C$${refs.combinedFilter}*Assumptions!$F$${geoRowIdx}+Assumptions!$G$${geoRowIdx}`;
+          const samV = tamV * refs.combinedFilterValue * accessPct + regPrem;
+          xlFormula(ws, xlAddr(col, geoSamRows[idx]), samF, samV);
+          geoSamTotalV += samV;
+
+          const clientsC = g.clientsByYear?.[i] ?? 0;
+          const acvC = g.acvByYear?.[i] ?? 0;
+          const geoClientsCol = xlCol(8 + i); // Assumptions geo table: I-M = Y1-Y5 clients
+          const geoAcvCol = xlCol(13 + i); // Assumptions geo table: N-R = Y1-Y5 ACV
+          const arrF = `Assumptions!${geoClientsCol}$${geoRowIdx}*Assumptions!${geoAcvCol}$${geoRowIdx}`;
+          const arrV = clientsC * acvC;
+          xlFormula(ws, xlAddr(col, geoArrRows[idx]), arrF, arrV);
+          geoArrTotalV += arrV;
+        });
+        if (geoTamTotalRow) xlFormula(ws, xlAddr(col, geoTamTotalRow), `SUM(${geographies.map((_, idx) => xlAddr(col, geoTamRows[idx])).join(',')})`, geoTamTotalV);
+        if (geoSamTotalRow) xlFormula(ws, xlAddr(col, geoSamTotalRow), `SUM(${geographies.map((_, idx) => xlAddr(col, geoSamRows[idx])).join(',')})`, geoSamTotalV);
+        if (geoArrTotalRow) xlFormula(ws, xlAddr(col, geoArrTotalRow), `SUM(${geographies.map((_, idx) => xlAddr(col, geoArrRows[idx])).join(',')})`, geoArrTotalV);
+
+        const primaryArrV = tamSamSom.arrVals[i];
+        const grandTotalF = geoArrTotalRow ? `'TAM SAM SOM'!${L}${tamSamSom.arrRow}+${L}${geoArrTotalRow}` : `'TAM SAM SOM'!${L}${tamSamSom.arrRow}`;
+        xlFormula(ws, xlAddr(col, grandTotalRow), grandTotalF, primaryArrV + geoArrTotalV);
+      });
+
+      ws['!cols'] = [{ wch: 2 }, { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+      return { ws };
+    }
+
+    function buildSalaryAnalysisSheet(model) {
+      const aoa = [];
+      const push = (row) => { aoa.push(row); return aoa.length; };
+      push(['SALARY ANALYSIS — 5-year headcount and payroll build. Monthly salary (Year 1) and the annual escalation % are the blue inputs; Year 2-5 salary is a formula chained off the prior year.']);
+      push([]);
+      push([null, 'Role', 'Contract Type', 'Escalation %', 'HC Y1', 'HC Y2', 'HC Y3', 'HC Y4', 'HC Y5', 'Salary/mo Y1', 'Salary/mo Y2', 'Salary/mo Y3', 'Salary/mo Y4', 'Salary/mo Y5', 'Annual Cost Y1', 'Annual Cost Y2', 'Annual Cost Y3', 'Annual Cost Y4', 'Annual Cost Y5', 'Notes']);
+      const roster = model.salaryRoster || [];
+      const startRow = aoa.length + 1;
+      roster.forEach(r => {
+        const hc = r.headcountByYear?.length === 5 ? r.headcountByYear : [0, 0, 0, 0, 0];
+        push([null, r.role || '', r.contractType || 'Full Time', r.annualEscalationPct ?? 0, ...hc, r.monthlySalaryY1USD ?? 0, null, null, null, null, null, null, null, null, null, r.notes || '']);
+      });
+      const totalRow = push([null, 'TOTAL']);
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      // Column layout: B=role(1) C=contract(2) D=escalation(3) E-I=headcount(4-8) J-N=salary/mo(9-13) O-S=annual cost(14-18) T=notes(19)
+      const salaryVals = []; // [role][year] monthly salary
+      const annualVals = []; // [role][year] annual cost
+
+      roster.forEach((r, idx) => {
+        const row = startRow + idx;
+        const esc = r.annualEscalationPct ?? 0;
+        const hc = r.headcountByYear?.length === 5 ? r.headcountByYear : [0, 0, 0, 0, 0];
+        const roleSalary = [], roleAnnual = [];
+        for (let y = 0; y < 5; y++) {
+          const salCol = 9 + y; // J..N
+          const annCol = 14 + y; // O..S
+          const hcCol = 4 + y; // E..I
+          let salV;
+          if (y === 0) {
+            salV = r.monthlySalaryY1USD ?? 0;
+            ws[xlAddr(salCol, row)] = { t: 'n', v: salV };
+          } else {
+            const prevCol = 9 + y - 1;
+            salV = roleSalary[y - 1] * (1 + esc);
+            xlFormula(ws, xlAddr(salCol, row), `${xlCol(prevCol)}${row}*(1+$D${row})`, salV);
+          }
+          roleSalary.push(salV);
+          const annV = hc[y] * salV * 12;
+          xlFormula(ws, xlAddr(annCol, row), `${xlCol(hcCol)}${row}*${xlCol(salCol)}${row}*12`, annV);
+          roleAnnual.push(annV);
+        }
+        salaryVals.push(roleSalary);
+        annualVals.push(roleAnnual);
+      });
+
+      // Totals row: headcount E-I, annual cost O-S
+      for (let y = 0; y < 5; y++) {
+        const hcCol = 4 + y, annCol = 14 + y;
+        if (roster.length) {
+          const hcRange = roster.map((_, idx) => xlAddr(hcCol, startRow + idx)).join(',');
+          const annRange = roster.map((_, idx) => xlAddr(annCol, startRow + idx)).join(',');
+          const hcTotal = roster.reduce((acc, r) => acc + (r.headcountByYear?.[y] ?? 0), 0);
+          const annTotal = annualVals.reduce((acc, vals) => acc + vals[y], 0);
+          xlFormula(ws, xlAddr(hcCol, totalRow), `SUM(${hcRange})`, hcTotal);
+          xlFormula(ws, xlAddr(annCol, totalRow), `SUM(${annRange})`, annTotal);
+        }
+      }
+
+      ws['!cols'] = [{ wch: 2 }, { wch: 26 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 50 }];
+      return { ws, totalRow, totalCostCols: [14, 15, 16, 17, 18] };
+    }
+
+    function buildExpenseAnalysisSheet(model, salaryRefs) {
+      const aoa = [];
+      const push = (row) => { aoa.push(row); return aoa.length; };
+      push(['EXPENSE ANALYSIS — non-salary operating costs by category. Headcount-driven lines reference the Salary Analysis totals directly.']);
+      push([]);
+      push([null, 'Category', 'Description', 'Driver', 'Year1', 'Year2', 'Year3', 'Year4', 'Year5', 'Escalation %', 'Rate / Head', 'Notes']);
+
+      const categories = model.expenseCategories || [];
+      const subtotalRows = [];
+      const lineData = []; // { row, driverType, y1, esc, rate }
+
+      categories.forEach(cat => {
+        push([null, (cat.category || '').toUpperCase()]);
+        const catStartRow = aoa.length + 1;
+        (cat.lineItems || []).forEach(li => {
+          const row = push([null, cat.category || '', li.description || '', li.driverType || 'flat', null, null, null, null, null, li.escalationPct ?? 0, li.ratePerHead ?? 0, li.notes || '']);
+          lineData.push({ row, driverType: li.driverType || 'flat', y1: li.y1AnnualUSD ?? 0, esc: li.escalationPct ?? 0, rate: li.ratePerHead ?? 0 });
+        });
+        const catEndRow = aoa.length;
+        if (catEndRow >= catStartRow) {
+          const subRow = push([null, `Subtotal — ${cat.category || ''}`]);
+          subtotalRows.push({ row: subRow, start: catStartRow, end: catEndRow });
+        }
+        push([]);
+      });
+
+      const grandTotalRow = push([null, 'GRAND TOTAL OPERATING EXPENSES']);
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const salaryTotalRow = salaryRefs.totalRow;
+      const salaryCostCols = salaryRefs.totalCostCols; // O..S (14..18) in Salary Analysis
+
+      lineData.forEach(item => {
+        for (let y = 0; y < 5; y++) {
+          const col = 4 + y; // E..I
+          let f, v;
+          if (item.driverType === 'perHeadcount' || item.driverType === 'perNewHire') {
+            const thisCol = xlCol(salaryCostCols[y] - 10); // map annual-cost col index to headcount col index (offset -10: O(14)->E(4))
+            if (item.driverType === 'perHeadcount' || y === 0) {
+              f = `'Salary Analysis'!${thisCol}$${salaryTotalRow}*$K${item.row}`;
+              v = 0; // computed value filled in after Salary sheet totals known — approximated below
+            } else {
+              const prevCol = xlCol(salaryCostCols[y - 1] - 10);
+              f = `('Salary Analysis'!${thisCol}$${salaryTotalRow}-'Salary Analysis'!${prevCol}$${salaryTotalRow})*$K${item.row}`;
+              v = 0;
+            }
+          } else if (item.driverType === 'escalating') {
+            if (y === 0) { ws[xlAddr(col, item.row)] = { t: 'n', v: item.y1 }; continue; }
+            const prevCol = 4 + y - 1;
+            f = `${xlCol(prevCol)}${item.row}*(1+$J${item.row})`;
+            v = 0; // running chain value patched in during the second pass below
+          } else {
+            // flat
+            ws[xlAddr(col, item.row)] = { t: 'n', v: item.y1 };
+            continue;
+          }
+          xlFormula(ws, xlAddr(col, item.row), f, v);
+        }
+      });
+
+      // Second pass: fill accurate cached values for escalating and headcount-driven cells
+      // now that Salary Analysis headcount totals are known from model.salaryRoster.
+      const hcTotalsByYear = [0, 0, 0, 0, 0];
+      (model.salaryRoster || []).forEach(r => {
+        const hc = r.headcountByYear?.length === 5 ? r.headcountByYear : [0, 0, 0, 0, 0];
+        hc.forEach((h, y) => { hcTotalsByYear[y] += h; });
+      });
+      lineData.forEach(item => {
+        let prevEsc = item.y1;
+        for (let y = 0; y < 5; y++) {
+          const col = 4 + y;
+          const addr = xlAddr(col, item.row);
+          if (item.driverType === 'perHeadcount') {
+            const v = hcTotalsByYear[y] * item.rate;
+            if (ws[addr]) ws[addr].v = v;
+          } else if (item.driverType === 'perNewHire') {
+            const newHires = y === 0 ? hcTotalsByYear[0] : Math.max(0, hcTotalsByYear[y] - hcTotalsByYear[y - 1]);
+            const v = newHires * item.rate;
+            if (ws[addr]) ws[addr].v = v;
+          } else if (item.driverType === 'escalating' && y > 0) {
+            prevEsc = prevEsc * (1 + item.esc);
+            if (ws[addr]) ws[addr].v = prevEsc;
+          }
+        }
+      });
+
+      subtotalRows.forEach(({ row, start, end }) => {
+        for (let y = 0; y < 5; y++) {
+          const col = 4 + y;
+          const range = `${xlAddr(col, start)}:${xlAddr(col, end)}`;
+          let total = 0;
+          for (let r = start; r <= end; r++) {
+            const addr = xlAddr(col, r);
+            total += ws[addr]?.v ?? 0;
+          }
+          xlFormula(ws, xlAddr(col, row), `SUM(${range})`, total);
+        }
+      });
+
+      for (let y = 0; y < 5; y++) {
+        const col = 4 + y;
+        const refList = subtotalRows.map(s => xlAddr(col, s.row));
+        const total = subtotalRows.reduce((acc, s) => acc + (ws[xlAddr(col, s.row)]?.v ?? 0), 0);
+        xlFormula(ws, xlAddr(col, grandTotalRow), `SUM(${refList.join(',')})`, total);
+      }
+
+      ws['!cols'] = [{ wch: 2 }, { wch: 24 }, { wch: 34 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 50 }];
+      return { ws, grandTotalRow, grandTotalCols: [4, 5, 6, 7, 8] };
+    }
+
+    function buildProfitLossSheet(model, tamSamSom, salaryRefs, expenseRefs, assumptionsRefs) {
+      const aoa = [];
+      const push = (row) => { aoa.push(row); return aoa.length; };
+      push(['PROFIT & LOSS — revenue pulled from TAM SAM SOM; costs pulled from Salary Analysis and Expense Analysis; every cell below is a live formula.']);
+      push([]);
+      push([null, 'Line Item', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5']);
+      const rRevenue = push([null, 'Revenue']);
+      const rCogs = push([null, 'Cost of Goods Sold (COGS)']);
+      const rGrossProfit = push([null, 'GROSS PROFIT']);
+      const rSalaries = push([null, 'Salaries & People Costs']);
+      const rOpex = push([null, 'Operating Expenses (non-salary)']);
+      const rTotalCosts = push([null, 'TOTAL OPERATING COSTS']);
+      const rEbitda = push([null, 'EBITDA']);
+      const rEbitdaMargin = push([null, '  EBITDA Margin %']);
+      push([]);
+      push([null, 'CASH FLOW']);
+      const rNetCash = push([null, 'Net Cash Flow']);
+      const rCumCash = push([null, 'Cumulative Cash Position']);
+      push([]);
+      push([null, 'UNIT ECONOMICS']);
+      const rAcv = push([null, 'Blended ACV (USD/year)']);
+      const rMrr = push([null, 'MRR per Client']);
+      const rCac = push([null, 'CAC']);
+      const rLtv = push([null, 'LTV (ACV × Gross Margin ÷ Churn)']);
+      const rLtvCac = push([null, '  LTV : CAC']);
+      const rPayback = push([null, '  CAC Payback (months)']);
+      push([]);
+      push([null, 'FUNDING & VALUATION']);
+      const rPreMoney = push([null, 'Pre-Money Valuation (Revenue × Multiple)']);
+      const rRaise = push([null, 'Recommended Raise']);
+      const rPostMoney = push([null, 'Post-Money Valuation']);
+      const rFundingGap = push([null, 'Funding Gap (if cumulative cash negative)']);
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const margin = model.grossMargin ?? 0;
+      const churn = model.churnRate ?? 0;
+      const ltvHorizon = model.funding?.ltvHorizonYears ?? 3;
+
+      let cumCash = 0;
+      YEAR_COLS.forEach((col, i) => {
+        const L = xlCol(col);
+        const revV = tamSamSom.arrVals[i];
+        xlFormula(ws, xlAddr(col, rRevenue), `'TAM SAM SOM'!${L}${tamSamSom.arrRow}`, revV);
+
+        const cogsV = -revV * (1 - margin);
+        xlFormula(ws, xlAddr(col, rCogs), `-${L}${rRevenue}*(1-Assumptions!$C$${assumptionsRefs.margin})`, cogsV);
+
+        const gpV = revV + cogsV;
+        xlFormula(ws, xlAddr(col, rGrossProfit), `${L}${rRevenue}+${L}${rCogs}`, gpV);
+
+        const salaryCol = xlCol(salaryRefs.totalCostCols[i]);
+        const salV = (model.salaryRoster || []).reduce((acc, r) => {
+          const hc = r.headcountByYear?.[i] ?? 0;
+          let sal = r.monthlySalaryY1USD ?? 0;
+          for (let y = 0; y < i; y++) sal *= (1 + (r.annualEscalationPct ?? 0));
+          return acc + hc * sal * 12;
+        }, 0);
+        xlFormula(ws, xlAddr(col, rSalaries), `'Salary Analysis'!${salaryCol}$${salaryRefs.totalRow}`, salV);
+
+        const opexCol = xlCol(expenseRefs.grandTotalCols[i]);
+        // Recompute opex total in JS for the cached value (mirrors buildExpenseAnalysisSheet's own math).
+        let opexV = 0;
+        (model.expenseCategories || []).forEach(cat => {
+          (cat.lineItems || []).forEach(li => {
+            const dt = li.driverType || 'flat';
+            if (dt === 'flat') opexV += li.y1AnnualUSD ?? 0;
+            else if (dt === 'escalating') opexV += (li.y1AnnualUSD ?? 0) * Math.pow(1 + (li.escalationPct ?? 0), i);
+            else if (dt === 'perHeadcount' || dt === 'perNewHire') {
+              const hcTotals = [0, 0, 0, 0, 0];
+              (model.salaryRoster || []).forEach(r => { (r.headcountByYear || []).forEach((h, y) => { hcTotals[y] += h; }); });
+              if (dt === 'perHeadcount') opexV += hcTotals[i] * (li.ratePerHead ?? 0);
+              else opexV += (i === 0 ? hcTotals[0] : Math.max(0, hcTotals[i] - hcTotals[i - 1])) * (li.ratePerHead ?? 0);
+            }
+          });
+        });
+        xlFormula(ws, xlAddr(col, rOpex), `'Expense Analysis'!${opexCol}$${expenseRefs.grandTotalRow}`, opexV);
+
+        const totalCostsV = salV + opexV;
+        xlFormula(ws, xlAddr(col, rTotalCosts), `${L}${rSalaries}+${L}${rOpex}`, totalCostsV);
+
+        const ebitdaV = gpV - totalCostsV;
+        xlFormula(ws, xlAddr(col, rEbitda), `${L}${rGrossProfit}-${L}${rTotalCosts}`, ebitdaV);
+        xlFormula(ws, xlAddr(col, rEbitdaMargin), `IFERROR(${L}${rEbitda}/${L}${rRevenue},0)`, revV ? ebitdaV / revV : 0);
+
+        xlFormula(ws, xlAddr(col, rNetCash), `${L}${rEbitda}`, ebitdaV);
+        cumCash += ebitdaV;
+        const cumF = i === 0 ? `${L}${rNetCash}` : `${xlCol(YEAR_COLS[i - 1])}${rCumCash}+${L}${rNetCash}`;
+        xlFormula(ws, xlAddr(col, rCumCash), cumF, cumCash);
+
+        const acvC = model.blendedACVByYear?.[i] ?? 0;
+        xlFormula(ws, xlAddr(col, rAcv), `Assumptions!${L}$${assumptionsRefs.acv}`, acvC);
+        xlFormula(ws, xlAddr(col, rMrr), `${L}${rAcv}/12`, acvC / 12);
+
+        const cacC = model.funding?.cacByYear?.[i] ?? 0;
+        xlFormula(ws, xlAddr(col, rCac), `Assumptions!${L}$${assumptionsRefs.cac}`, cacC);
+
+        const ltvV = churn ? (acvC * margin) / churn : acvC * ltvHorizon * margin;
+        const ltvF = `IFERROR(${L}${rAcv}*Assumptions!$C$${assumptionsRefs.margin}/Assumptions!$C$${assumptionsRefs.churn},${L}${rAcv}*${ltvHorizon}*Assumptions!$C$${assumptionsRefs.margin})`;
+        xlFormula(ws, xlAddr(col, rLtv), ltvF, ltvV);
+        xlFormula(ws, xlAddr(col, rLtvCac), `IFERROR(${L}${rLtv}/${L}${rCac},0)`, cacC ? ltvV / cacC : 0);
+        const mrrV = acvC / 12;
+        xlFormula(ws, xlAddr(col, rPayback), `IFERROR(${L}${rCac}/(${L}${rMrr}*Assumptions!$C$${assumptionsRefs.margin}),0)`, (mrrV * margin) ? cacC / (mrrV * margin) : 0);
+
+        const preMoneyV = revV * (model.funding?.revenueMultiple ?? 0);
+        xlFormula(ws, xlAddr(col, rPreMoney), `${L}${rRevenue}*Assumptions!$C$${assumptionsRefs.revenueMultiple}`, preMoneyV);
+        const equityPct = model.funding?.equityPctForRaise ?? 0;
+        const raiseV = Math.max(preMoneyV * (equityPct / (1 - equityPct)), model.funding?.minimumRaiseUSD ?? 0);
+        xlFormula(ws, xlAddr(col, rRaise), `MAX(${L}${rPreMoney}*Assumptions!$C$${assumptionsRefs.equityPct}/(1-Assumptions!$C$${assumptionsRefs.equityPct}),Assumptions!$C$${assumptionsRefs.minRaise})`, raiseV);
+        xlFormula(ws, xlAddr(col, rPostMoney), `${L}${rPreMoney}+${L}${rRaise}`, preMoneyV + raiseV);
+        const gapV = Math.max(0, -cumCash);
+        xlFormula(ws, xlAddr(col, rFundingGap), `MAX(0,-${L}${rCumCash})`, gapV);
+      });
+
+      ws['!cols'] = [{ wch: 2 }, { wch: 42 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+      return { ws };
+    }
+
     function generateFinancialModelExcel(model, milestone, intake) {
       const wb = XLSX.utils.book_new();
 
-      const marketSizingAoa = [
-        ['Metric', 'Value', 'Methodology'],
-        ...(model.marketSizing || []).map(r => [r.metric || '', r.value || '', r.methodology || '']),
-      ];
-      const marketSizingWs = XLSX.utils.aoa_to_sheet(marketSizingAoa);
-      marketSizingWs['!cols'] = [{ wch: 32 }, { wch: 16 }, { wch: 70 }];
-      XLSX.utils.book_append_sheet(wb, marketSizingWs, 'Market Sizing');
+      const assumptions = buildAssumptionsSheet(model);
+      XLSX.utils.book_append_sheet(wb, assumptions.ws, 'Assumptions');
 
-      const unitEconAoa = [
-        ['Metric', 'Value', 'Note'],
-        ...(model.unitEconomics || []).map(r => [r.metric || '', r.value || '', r.note || '']),
-      ];
-      const unitEconWs = XLSX.utils.aoa_to_sheet(unitEconAoa);
-      unitEconWs['!cols'] = [{ wch: 32 }, { wch: 16 }, { wch: 60 }];
-      XLSX.utils.book_append_sheet(wb, unitEconWs, 'Unit Economics');
+      const tamSamSom = buildTamSamSomSheet(assumptions.refs);
+      XLSX.utils.book_append_sheet(wb, tamSamSom.ws, 'TAM SAM SOM');
 
-      const pl = model.threeYearPL || { years: [], rows: [] };
-      const plAoa = [
-        ['Line Item', ...(pl.years || [])],
-        ...(pl.rows || []).map(r => [r.line || '', ...(r.values || [])]),
-        [''],
-        ['Assumptions', pl.assumptions || ''],
-      ];
-      const plWs = XLSX.utils.aoa_to_sheet(plAoa);
-      plWs['!cols'] = [{ wch: 28 }, ...(pl.years || []).map(() => ({ wch: 16 }))];
-      XLSX.utils.book_append_sheet(wb, plWs, '3-Year P&L');
+      const revenueBridge = buildRevenueBridgeSheet(assumptions.refs);
+      XLSX.utils.book_append_sheet(wb, revenueBridge.ws, 'Revenue Bridge');
 
-      const fundingAoa = [
-        ['Milestone', 'Amount', 'Runway', 'Use of Funds'],
-        ...(model.fundingNeeds || []).map(r => [r.milestone || '', r.amount || '', r.runway || '', r.useOfFunds || '']),
-      ];
-      const fundingWs = XLSX.utils.aoa_to_sheet(fundingAoa);
-      fundingWs['!cols'] = [{ wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 60 }];
-      XLSX.utils.book_append_sheet(wb, fundingWs, 'Funding Needs');
+      const segmentsGeo = buildSegmentsGeoSheet(assumptions.refs, tamSamSom);
+      XLSX.utils.book_append_sheet(wb, segmentsGeo.ws, 'Segments & Geographies');
+
+      const salary = buildSalaryAnalysisSheet(model);
+      XLSX.utils.book_append_sheet(wb, salary.ws, 'Salary Analysis');
+
+      const expense = buildExpenseAnalysisSheet(model, salary);
+      XLSX.utils.book_append_sheet(wb, expense.ws, 'Expense Analysis');
+
+      const pl = buildProfitLossSheet(model, tamSamSom, salary, expense, assumptions.refs);
+      XLSX.utils.book_append_sheet(wb, pl.ws, 'Profit & Loss');
 
       const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
       const notesAoa = [
@@ -1697,7 +2306,8 @@ ${buildReportBodyHTML(report, milestone, intake)}
         ['Date', dateStr],
         ['Client brief', intake?.brief || ''],
         [''],
-        ['Note: figures are AI-generated estimates and should be independently verified before use in a client deliverable.'],
+        ['This is a fully formula-linked model: every sheet after Assumptions computes live from Assumptions cells (or, for Salary/Expense/P&L, from each other). Change a blue input cell and the workbook recalculates.'],
+        ['Note: figures are AI-generated estimates grounded in the client brief and should be independently verified before use in a client deliverable.'],
       ];
       const notesWs = XLSX.utils.aoa_to_sheet(notesAoa);
       notesWs['!cols'] = [{ wch: 22 }, { wch: 80 }];

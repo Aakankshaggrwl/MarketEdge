@@ -537,8 +537,13 @@ Respond with ONLY valid JSON (no markdown, no fences):
   }
 });
 
-// Generate the financial model (structured JSON, rendered client-side as an Excel
-// download with one sheet per table). Only used for the Financial Analysis milestone.
+// Generate the financial model as raw ASSUMPTIONS (structured JSON) — not pre-computed
+// figures. The client builds a fully formula-linked, multi-sheet Excel workbook from
+// these inputs (market sizing -> TAM/SAM/SOM -> revenue bridge -> segments/geographies
+// -> salary -> expenses -> P&L, every downstream number a live Excel formula), so a
+// reviewer can change one assumption cell and watch the whole model recalculate —
+// the same design as a real 5-year operating model an analyst would hand-build.
+// Only used for the Financial Analysis milestone.
 app.post('/api/generate-financial-model', async (req, res) => {
   try {
     const { sow, intake } = req.body;
@@ -549,54 +554,74 @@ app.post('/api/generate-financial-model', async (req, res) => {
 
     const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
 
-    const prompt = `You are a senior strategy consultant building the financial model for a client's strategy engagement.
+    const prompt = `You are a financial analyst with 15+ years of experience building operating models for growth-stage companies. Build the complete set of ASSUMPTIONS behind a 5-year financial model for this client — not the computed outputs, the raw inputs a real model would be built from. Every figure must be a specific, defensible, industry-grounded estimate — never a placeholder, never "$X" or "TBD". Where a number could look arbitrary, the accompanying note must say how you derived it (comparable pricing, published market sizing, standard SaaS/industry benchmarks, etc.).
 
 Client: ${briefContext}
 Scope: ${sow.engagement_summary}
 
-Build a complete, numeric financial model grounded in this client's actual brief (their industry, stage, and market) — every figure should be a specific, defensible estimate, never a placeholder like "TBD" or "$X". State your calculation method inline wherever a figure could otherwise look arbitrary.
+Respond with ONLY valid JSON (no markdown, no fences) matching this exact structure. All money figures are plain numbers in USD (no currency symbols, no commas, no strings like "$1.2M" — write 1200000). All percentages are decimals (12% -> 0.12). Keep every "note"/"rationale" field to one short sentence — this is a dense data table, not a report.
 
-Respond with ONLY valid JSON (no markdown, no fences), matching this exact structure:
 {
-  "marketSizing": [
-    {"metric": "TAM (Total Addressable Market)", "value": "$X.XB", "methodology": "how this was calculated"},
-    {"metric": "SAM (Serviceable Addressable Market)", "value": "$X.XM", "methodology": "..."},
-    {"metric": "SOM (Serviceable Obtainable Market, Year 3)", "value": "$X.XM", "methodology": "..."}
-  ],
-  "unitEconomics": [
-    {"metric": "Average Revenue Per Account (ARPA/ARPU)", "value": "$X", "note": "..."},
-    {"metric": "Customer Acquisition Cost (CAC)", "value": "$X", "note": "..."},
-    {"metric": "Customer Lifetime Value (LTV)", "value": "$X", "note": "..."},
-    {"metric": "LTV:CAC Ratio", "value": "X.Xx", "note": "..."},
-    {"metric": "Gross Margin", "value": "XX%", "note": "..."},
-    {"metric": "CAC Payback Period", "value": "X months", "note": "..."}
-  ],
-  "threeYearPL": {
-    "years": ["Year 1", "Year 2", "Year 3"],
-    "rows": [
-      {"line": "Revenue", "values": ["$X", "$X", "$X"]},
-      {"line": "Cost of Goods Sold (COGS)", "values": ["$X", "$X", "$X"]},
-      {"line": "Gross Profit", "values": ["$X", "$X", "$X"]},
-      {"line": "Sales & Marketing", "values": ["$X", "$X", "$X"]},
-      {"line": "General & Administrative", "values": ["$X", "$X", "$X"]},
-      {"line": "Research & Development", "values": ["$X", "$X", "$X"]},
-      {"line": "Total Operating Expenses", "values": ["$X", "$X", "$X"]},
-      {"line": "EBITDA", "values": ["$X", "$X", "$X"]}
-    ],
-    "assumptions": "2-4 sentences stating the key assumptions behind these numbers (growth rate, pricing, headcount plan, etc.)"
+  "years": ["Year 1", "Year 2", "Year 3", "Year 4", "Year 5"],
+  "market": {
+    "primaryMarketName": "short name for this client's core addressable market",
+    "primaryMarketSizeUSDM_Y1": number,
+    "primaryMarketCAGR": number,
+    "globalMarketName": "short name for the broader global category this sits in",
+    "globalMarketSizeUSDM_Y1": number,
+    "globalMarketCAGR": number
   },
-  "fundingNeeds": [
-    {"milestone": "e.g. Seed / Product-Market Fit", "amount": "$X", "runway": "X months", "useOfFunds": "..."},
-    {"milestone": "e.g. Series A / Scale", "amount": "$X", "runway": "X months", "useOfFunds": "..."}
-  ]
+  "segmentFilters": [
+    {"label": "a filter narrowing global/primary market down to what this client can actually serve, e.g. 'Target segment share of market'", "percent": number, "rationale": "..."}
+  ],
+  "samPremium": {"label": "name of any unserved-gap premium to add on top of the filtered SAM, or 'None' if not applicable", "amountUSDM": number, "rationale": "..."},
+  "pricingTiers": [
+    {"name": "tier or module name", "monthlyPriceUSD": number, "rationale": "..."}
+  ],
+  "blendedACVByYear": [number, number, number, number, number],
+  "clientTargetsByYear": [number, number, number, number, number],
+  "churnRate": number,
+  "nrr": number,
+  "grossMargin": number,
+  "segments": [
+    {"name": "customer segment name", "clientsByYear": [number, number, number, number, number], "entryACV": number, "fullSuiteACV": number, "icpNote": "..."}
+  ],
+  "geographies": [
+    {"name": "expansion market/country name", "region": "region name", "tamPctOfGlobal": number, "cagr": number, "accessiblePct": number, "regulatoryPremiumUSDM": number, "entryTiming": "e.g. Q3 2027", "clientsByYear": [number, number, number, number, number], "acvByYear": [number, number, number, number, number], "regulatoryDriver": "the specific regulation/forcing-function driving demand here, or market dynamic if no regulation applies"}
+  ],
+  "salaryRoster": [
+    {"role": "job title", "headcountByYear": [number, number, number, number, number], "monthlySalaryY1USD": number, "annualEscalationPct": number, "contractType": "Full Time or Part Time or Outsourced", "notes": "..."}
+  ],
+  "expenseCategories": [
+    {
+      "category": "expense category name, e.g. 'Workspace & Facilities'",
+      "lineItems": [
+        {"description": "specific line item", "driverType": "flat or escalating or perHeadcount or perNewHire", "y1AnnualUSD": number, "escalationPct": number, "ratePerHead": number, "notes": "..."}
+      ]
+    }
+  ],
+  "funding": {
+    "revenueMultiple": number,
+    "equityPctForRaise": number,
+    "minimumRaiseUSD": number,
+    "cacByYear": [number, number, number, number, number],
+    "ltvHorizonYears": number
+  }
 }
 
-Include at least 6 rows in threeYearPL.rows (in the order shown, ending in EBITDA) and at least 1-3 funding rounds in fundingNeeds appropriate to this client's stated stage.`;
+Sizing guidance:
+- segmentFilters: 2-4 filters that multiply together into the combined SAM filter.
+- pricingTiers: 2-5 tiers/modules that plausibly compose the blended ACV figures below.
+- segments: 4-6 real customer segments for this client's actual industry.
+- geographies: 3-5 realistic expansion markets/countries beyond the primary market, each with its own regulatory or market driver — even a locally-focused business should have a credible expansion path.
+- salaryRoster: 12-18 roles appropriate to this client's stage and industry, with headcount by year reflecting realistic team growth (e.g. lean Year 1, scaling after each funding milestone). driverType "perHeadcount" means ratePerHead x cumulative headcount that year; "perNewHire" means ratePerHead x net new hires that year (one-time costs like equipment); "escalating" means y1AnnualUSD growing by escalationPct each year; "flat" means the same y1AnnualUSD every year.
+- expenseCategories: 8-12 categories (e.g. Workspace & Facilities, Technology & Cloud Infrastructure, Software & SaaS Subscriptions, Hardware & Equipment, Travel, Legal & Compliance, Finance & Accounting, HR & Recruitment, Marketing & Events, Insurance, Contingency), each with 2-4 concrete line items grounded in this client's industry and market — not generic placeholders.
+- funding: revenueMultiple and equityPctForRaise should reflect what's typical for this client's industry and stage; cacByYear should decline as the brand matures.`;
 
     const message = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 8000,
-      system: SENIOR_VOICE + ` Respond with ONLY valid JSON matching the exact structure requested. No markdown, no code fences, no prose before or after the JSON. Every field must be filled with a specific value — never a placeholder.`,
+      max_tokens: 16000,
+      system: SENIOR_VOICE + ` Respond with ONLY valid JSON matching the exact structure requested. No markdown, no code fences, no prose before or after the JSON. Every numeric field must be a real number, not a string, and not zero unless the assumption genuinely is zero (e.g. a market entered in a later year).`,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -609,22 +634,22 @@ Include at least 6 rows in threeYearPL.rows (in the order shown, ending in EBITD
 
     const model = safeParseJSON(text);
 
-    // Drop any incomplete trailing entry a truncation repair may have left behind.
-    if (model?.threeYearPL?.rows) {
-      model.threeYearPL.rows = model.threeYearPL.rows.filter(r => r && r.line && Array.isArray(r.values) && r.values.length > 0);
-    }
-    if (Array.isArray(model?.marketSizing)) {
-      model.marketSizing = model.marketSizing.filter(r => r && r.metric && r.value);
-    }
-    if (Array.isArray(model?.unitEconomics)) {
-      model.unitEconomics = model.unitEconomics.filter(r => r && r.metric && r.value);
-    }
-    if (Array.isArray(model?.fundingNeeds)) {
-      model.fundingNeeds = model.fundingNeeds.filter(r => r && r.milestone && r.amount);
-    }
+    // Drop any incomplete trailing entry a truncation repair may have left behind, and
+    // normalize arrays that might be missing entirely so the Excel builder never crashes
+    // on a partially-malformed response.
+    const arr = (v) => Array.isArray(v) ? v : [];
+    model.segmentFilters = arr(model.segmentFilters).filter(r => r && r.label);
+    model.pricingTiers = arr(model.pricingTiers).filter(r => r && r.name);
+    model.segments = arr(model.segments).filter(r => r && r.name && Array.isArray(r.clientsByYear));
+    model.geographies = arr(model.geographies).filter(r => r && r.name && Array.isArray(r.clientsByYear));
+    model.salaryRoster = arr(model.salaryRoster).filter(r => r && r.role && Array.isArray(r.headcountByYear));
+    model.expenseCategories = arr(model.expenseCategories)
+      .filter(c => c && c.category)
+      .map(c => ({ ...c, lineItems: arr(c.lineItems).filter(li => li && li.description) }))
+      .filter(c => c.lineItems.length > 0);
 
-    if (!model?.threeYearPL?.rows || !Array.isArray(model.threeYearPL.rows) || model.threeYearPL.rows.length === 0) {
-      return res.status(500).json({ error: "Invalid financial model: missing or empty P&L rows" });
+    if (model.salaryRoster.length === 0 || model.expenseCategories.length === 0) {
+      return res.status(500).json({ error: "Invalid financial model: missing salary roster or expense categories" });
     }
 
     res.status(200).json({ success: true, model });
