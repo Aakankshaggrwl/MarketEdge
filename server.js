@@ -36,7 +36,11 @@ const MILESTONE_FOCUS = {
 - Psychographic & Sentiment Analysis: the underlying motivations, fears, and emotional drivers behind each segment's buying decision — what pain they are actually trying to escape, not just the functional need.
 - Pain Points & Unmet Requirements: the specific frustrations with current alternatives (including doing nothing) that this business can exploit.
 - Target Customer Recommendation: a clear, decisive call on which segment(s) to prioritize first and why, ranked by attractiveness.`,
-  competitor: `Cover, at minimum: a competitor-by-competitor breakdown (direct and indirect) with their positioning, pricing, and target segment; where each is strong and where each is structurally weak; white space they are leaving open; and how this client should differentiate against each of them specifically.`,
+  competitor: `Cover, at minimum, all of the following as clearly labeled "## " sub-sections:
+- Competitor-by-Competitor Breakdown: a direct and indirect competitor-by-competitor rundown with each one's positioning, pricing, and target segment.
+- Where Each Competitor Is Strong: what each named competitor structurally does well and why it is hard to attack there.
+- Where Each Competitor Is Weak: the specific, structural weaknesses of each named competitor — not surface complaints.
+- Gap & Opportunity vs. Competitors: the white space every competitor above is leaving open in this market, stated as concrete, named gaps — then a clear, decisive call on which gap(s) this client is best positioned to own and exactly how to differentiate against the field to own them.`,
   gap: `Cover, at minimum: the specific unserved or underserved needs in this market, evidence for why they are unserved, the size of the opportunity each gap represents, and which gaps this business is best positioned to own given its stated strengths.`,
   beachhead: `Cover, at minimum: 2-3 candidate beachhead segments compared head-to-head on reachability, willingness to pay, competitive intensity, and expansion potential; a decisive recommendation on the single best beachhead; and the specific wedge strategy to win it.`,
   entry: `Cover, at minimum: the recommended entry sequence (channel-by-channel or region-by-region), the rationale for that sequence, go-to-market motion (sales-led, PLG, partnerships, etc.), and the first 90 days of concrete entry actions.`,
@@ -308,7 +312,7 @@ Respond with ONLY these sections separated by ---SECTION---. Follow the target l
 
 TITLE: ${milestoneName}
 ---SECTION---
-EXECUTIVE_SUMMARY: [300-400 words. Open with 1-2 orienting paragraphs on the headline conclusions and why they matter to this client specifically. Use "## " subsections only if the summary naturally splits into distinct headline conclusions.]
+EXECUTIVE_SUMMARY: [800-1000 words. This must stand alone as a complete summary of the whole report — it is what the client reads on-screen before ever opening the full document, so it needs to carry the real substance, not just tease it. Cover: the headline conclusions and why they matter to this client specifically; the 3-4 most important findings from the analysis; and the top decisive recommendation(s). Use "## " subsections to organize it (e.g. "## Headline Conclusions", "## Key Findings At A Glance", "## Top Recommendation") rather than one long block of prose.]
 ---SECTION---
 MARKET_CONTEXT: [600-800 words. The landscape this client is operating in, grounded in their industry, stage, and target market. Use 2-3 "## " subsections for the distinct parts of the landscape (e.g. market size, dynamics, timing), each opened with a paragraph and, where there are concrete figures worth calling out, followed by "- **Label:** ..." bullets.]
 ---SECTION---
@@ -458,6 +462,89 @@ Respond with ONLY valid JSON (no markdown, no fences):
   } catch (err) {
     console.error("Competitor matrix generation error:", err.message);
     res.status(500).json({ error: err.message || "Failed to generate competitor matrix" });
+  }
+});
+
+// Generate the financial model (structured JSON, rendered client-side as an Excel
+// download with one sheet per table). Only used for the Financial Analysis milestone.
+app.post('/api/generate-financial-model', async (req, res) => {
+  try {
+    const { sow, intake } = req.body;
+
+    if (!sow || !intake) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
+
+    const prompt = `You are a senior strategy consultant building the financial model for a client's strategy engagement.
+
+Client: ${briefContext}
+Scope: ${sow.engagement_summary}
+
+Build a complete, numeric financial model grounded in this client's actual brief (their industry, stage, and market) — every figure should be a specific, defensible estimate, never a placeholder like "TBD" or "$X". State your calculation method inline wherever a figure could otherwise look arbitrary.
+
+Respond with ONLY valid JSON (no markdown, no fences), matching this exact structure:
+{
+  "marketSizing": [
+    {"metric": "TAM (Total Addressable Market)", "value": "$X.XB", "methodology": "how this was calculated"},
+    {"metric": "SAM (Serviceable Addressable Market)", "value": "$X.XM", "methodology": "..."},
+    {"metric": "SOM (Serviceable Obtainable Market, Year 3)", "value": "$X.XM", "methodology": "..."}
+  ],
+  "unitEconomics": [
+    {"metric": "Average Revenue Per Account (ARPA/ARPU)", "value": "$X", "note": "..."},
+    {"metric": "Customer Acquisition Cost (CAC)", "value": "$X", "note": "..."},
+    {"metric": "Customer Lifetime Value (LTV)", "value": "$X", "note": "..."},
+    {"metric": "LTV:CAC Ratio", "value": "X.Xx", "note": "..."},
+    {"metric": "Gross Margin", "value": "XX%", "note": "..."},
+    {"metric": "CAC Payback Period", "value": "X months", "note": "..."}
+  ],
+  "threeYearPL": {
+    "years": ["Year 1", "Year 2", "Year 3"],
+    "rows": [
+      {"line": "Revenue", "values": ["$X", "$X", "$X"]},
+      {"line": "Cost of Goods Sold (COGS)", "values": ["$X", "$X", "$X"]},
+      {"line": "Gross Profit", "values": ["$X", "$X", "$X"]},
+      {"line": "Sales & Marketing", "values": ["$X", "$X", "$X"]},
+      {"line": "General & Administrative", "values": ["$X", "$X", "$X"]},
+      {"line": "Research & Development", "values": ["$X", "$X", "$X"]},
+      {"line": "Total Operating Expenses", "values": ["$X", "$X", "$X"]},
+      {"line": "EBITDA", "values": ["$X", "$X", "$X"]}
+    ],
+    "assumptions": "2-4 sentences stating the key assumptions behind these numbers (growth rate, pricing, headcount plan, etc.)"
+  },
+  "fundingNeeds": [
+    {"milestone": "e.g. Seed / Product-Market Fit", "amount": "$X", "runway": "X months", "useOfFunds": "..."},
+    {"milestone": "e.g. Series A / Scale", "amount": "$X", "runway": "X months", "useOfFunds": "..."}
+  ]
+}
+
+Include at least 6 rows in threeYearPL.rows (in the order shown, ending in EBITDA) and at least 1-3 funding rounds in fundingNeeds appropriate to this client's stated stage.`;
+
+    const message = await client.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 6000,
+      system: SENIOR_VOICE + ` Respond with ONLY valid JSON matching the exact structure requested. No markdown, no code fences, no prose before or after the JSON. Every field must be filled with a specific value — never a placeholder.`,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = message.content.find(block => block.type === "text");
+    const text = textBlock?.text || "";
+
+    if (!text) {
+      return res.status(500).json({ error: "Empty response from Claude" });
+    }
+
+    const model = safeParseJSON(text);
+
+    if (!model?.threeYearPL?.rows || !Array.isArray(model.threeYearPL.rows) || model.threeYearPL.rows.length === 0) {
+      return res.status(500).json({ error: "Invalid financial model: missing or empty P&L rows" });
+    }
+
+    res.status(200).json({ success: true, model });
+  } catch (err) {
+    console.error("Financial model generation error:", err.message);
+    res.status(500).json({ error: err.message || "Failed to generate financial model" });
   }
 });
 

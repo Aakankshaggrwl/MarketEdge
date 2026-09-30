@@ -338,21 +338,6 @@
       margin-bottom: 6px;
     }
 
-    .snapshot-teaser {
-      font-size: 11pt;
-      line-height: 1.6;
-      color: #333;
-      text-align: justify;
-      margin: 0 0 4px;
-    }
-
-    .snapshot-more {
-      font-size: 10.5pt;
-      color: #888;
-      font-style: italic;
-      margin-top: 2px;
-    }
-
     .report-highlight {
       background: #F7FAF9;
       border: 1px solid #DCE7E4;
@@ -379,24 +364,31 @@
       text-align: justify;
     }
 
-    .snapshot-section {
-      border-left: 4px solid #0F766E;
-      padding: 4px 0 4px 18px;
-      margin-bottom: 20px;
+    .snapshot-outline {
+      border-top: 1px solid #e5e5e5;
+      margin-top: 24px;
+      padding-top: 16px;
     }
 
-    .snapshot-section h4 {
+    .snapshot-outline h4 {
       color: #102A43;
-      font-size: 14pt;
+      font-size: 12pt;
       font-weight: 700;
-      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
     }
 
-    .snapshot-section p {
-      color: #333;
+    .snapshot-outline ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .snapshot-outline li {
+      color: #444;
       font-size: 11pt;
-      line-height: 1.7;
-      text-align: justify;
+      line-height: 1.9;
     }
 
     .milestone-rationale {
@@ -407,7 +399,7 @@
       margin: 6px 0 0 24px;
     }
 
-    .report-highlight strong, .snapshot-section strong, .report-section strong {
+    .report-highlight strong, .report-section strong {
       color: #102A43;
     }
 
@@ -748,6 +740,32 @@
       } catch (err) {
         console.error("❌ Competitor matrix fetch error:", err);
         onMatrix({ error: `Network error: ${err.message}` });
+      }
+    }
+
+    async function generateFinancialModel(sow, intake, onModel) {
+      try {
+        const response = await fetch('/api/generate-financial-model', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sow, intake })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          onModel({ error: data.error || "Server error" });
+          return;
+        }
+
+        if (data.success && data.model) {
+          onModel(data.model);
+        } else {
+          onModel({ error: "Invalid response structure" });
+        }
+      } catch (err) {
+        console.error("❌ Financial model fetch error:", err);
+        onModel({ error: `Network error: ${err.message}` });
       }
     }
 
@@ -1633,6 +1651,64 @@ ${buildReportBodyHTML(report, milestone, intake)}
       XLSX.writeFile(wb, `MarketEdge-${milestone.name.replace(/\s+/g, '-')}-Comparison.xlsx`);
     }
 
+    // ============ FINANCIAL MODEL (Excel) ============
+    function generateFinancialModelExcel(model, milestone, intake) {
+      const wb = XLSX.utils.book_new();
+
+      const marketSizingAoa = [
+        ['Metric', 'Value', 'Methodology'],
+        ...(model.marketSizing || []).map(r => [r.metric || '', r.value || '', r.methodology || '']),
+      ];
+      const marketSizingWs = XLSX.utils.aoa_to_sheet(marketSizingAoa);
+      marketSizingWs['!cols'] = [{ wch: 32 }, { wch: 16 }, { wch: 70 }];
+      XLSX.utils.book_append_sheet(wb, marketSizingWs, 'Market Sizing');
+
+      const unitEconAoa = [
+        ['Metric', 'Value', 'Note'],
+        ...(model.unitEconomics || []).map(r => [r.metric || '', r.value || '', r.note || '']),
+      ];
+      const unitEconWs = XLSX.utils.aoa_to_sheet(unitEconAoa);
+      unitEconWs['!cols'] = [{ wch: 32 }, { wch: 16 }, { wch: 60 }];
+      XLSX.utils.book_append_sheet(wb, unitEconWs, 'Unit Economics');
+
+      const pl = model.threeYearPL || { years: [], rows: [] };
+      const plAoa = [
+        ['Line Item', ...(pl.years || [])],
+        ...(pl.rows || []).map(r => [r.line || '', ...(r.values || [])]),
+        [''],
+        ['Assumptions', pl.assumptions || ''],
+      ];
+      const plWs = XLSX.utils.aoa_to_sheet(plAoa);
+      plWs['!cols'] = [{ wch: 28 }, ...(pl.years || []).map(() => ({ wch: 16 }))];
+      XLSX.utils.book_append_sheet(wb, plWs, '3-Year P&L');
+
+      const fundingAoa = [
+        ['Milestone', 'Amount', 'Runway', 'Use of Funds'],
+        ...(model.fundingNeeds || []).map(r => [r.milestone || '', r.amount || '', r.runway || '', r.useOfFunds || '']),
+      ];
+      const fundingWs = XLSX.utils.aoa_to_sheet(fundingAoa);
+      fundingWs['!cols'] = [{ wch: 26 }, { wch: 14 }, { wch: 14 }, { wch: 60 }];
+      XLSX.utils.book_append_sheet(wb, fundingWs, 'Funding Needs');
+
+      const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+      const notesAoa = [
+        ['MarketEdge — Financial Model'],
+        ['Prepared for', [intake?.industry, intake?.market].filter(Boolean).join(' — ')],
+        ['Date', dateStr],
+        ['Client brief', intake?.brief || ''],
+        [''],
+        ['Note: figures are AI-generated estimates and should be independently verified before use in a client deliverable.'],
+      ];
+      const notesWs = XLSX.utils.aoa_to_sheet(notesAoa);
+      notesWs['!cols'] = [{ wch: 22 }, { wch: 80 }];
+      XLSX.utils.book_append_sheet(wb, notesWs, 'Notes');
+
+      XLSX.writeFile(wb, `MarketEdge-${milestone.name.replace(/\s+/g, '-')}-Model.xlsx`);
+    }
+
+    // A cached report/matrix is only reused while this signature still matches the
+    // current SOW and intake — either changing invalidates every cached milestone entry
+    // whose signature was computed from the old values, forcing a fresh generation.
     function computeReportSignature(sow, intake) {
       return JSON.stringify({ sow, intake });
     }
@@ -1640,8 +1716,10 @@ ${buildReportBodyHTML(report, milestone, intake)}
     function MilestoneStep({ milestone, sow, intake, cachedEntry, onCacheUpdate, onNext, onPrev, isFirst, isLast }) {
       const signature = computeReportSignature(sow, intake);
       const isCompetitorMilestone = milestone.key === 'competitor';
+      const isFinancialMilestone = milestone.key === 'financial';
       const cacheHasReport = !!(cachedEntry && cachedEntry.sourceSignature === signature && cachedEntry.report);
       const cacheHasMatrix = !!(cachedEntry && cachedEntry.sourceSignature === signature && cachedEntry.matrix);
+      const cacheHasModel = !!(cachedEntry && cachedEntry.sourceSignature === signature && cachedEntry.financialModel);
 
       const [report, setReport] = useState(() => cacheHasReport ? cachedEntry.report : null);
       const [loading, setLoading] = useState(() => !cacheHasReport);
@@ -1650,6 +1728,10 @@ ${buildReportBodyHTML(report, milestone, intake)}
       const [matrix, setMatrix] = useState(() => cacheHasMatrix ? cachedEntry.matrix : null);
       const [matrixLoading, setMatrixLoading] = useState(() => isCompetitorMilestone && !cacheHasMatrix);
       const [matrixError, setMatrixError] = useState(null);
+
+      const [financialModel, setFinancialModel] = useState(() => cacheHasModel ? cachedEntry.financialModel : null);
+      const [modelLoading, setModelLoading] = useState(() => isFinancialMilestone && !cacheHasModel);
+      const [modelError, setModelError] = useState(null);
 
       useEffect(() => {
         if (cacheHasReport) {
@@ -1697,6 +1779,26 @@ ${buildReportBodyHTML(report, milestone, intake)}
         return () => { cancelled = true; };
       }, [isCompetitorMilestone, sow, intake]);
 
+      useEffect(() => {
+        if (!isFinancialMilestone || cacheHasModel) return;
+        let cancelled = false;
+        setModelLoading(true);
+        setModelError(null);
+        setFinancialModel(null);
+        generateFinancialModel(sow, intake, (result) => {
+          if (cancelled) return;
+          setModelLoading(false);
+          if (result.error) {
+            console.error("Financial model error:", result.error);
+            setModelError(result.error);
+          } else {
+            setFinancialModel(result);
+            onCacheUpdate(milestone.key, { financialModel: result, sourceSignature: signature, generatedAt: new Date().toISOString() });
+          }
+        });
+        return () => { cancelled = true; };
+      }, [isFinancialMilestone, sow, intake]);
+
       const downloadPDF = () => {
         if (!report) return;
         generateReportPDF(report, milestone, intake);
@@ -1711,9 +1813,14 @@ ${buildReportBodyHTML(report, milestone, intake)}
         setTimeout(() => printWindow.print(), 300);
       };
 
-      const downloadExcel = () => {
+      const downloadCompetitorExcel = () => {
         if (!matrix) return;
         generateCompetitorExcel(matrix, milestone, intake);
+      };
+
+      const downloadFinancialExcel = () => {
+        if (!financialModel) return;
+        generateFinancialModelExcel(financialModel, milestone, intake);
       };
 
       const numberedReport = report ? parseAndNumberReport(report) : null;
@@ -1740,31 +1847,38 @@ ${buildReportBodyHTML(report, milestone, intake)}
                   </div>
                 )}
 
-                {restSections.map((section) => {
-                  const firstPara = section.blocks.find(b => b.type === 'p');
-                  const teaserText = firstPara ? stripInlineBold(firstPara.text) : '';
-                  const teaser = teaserText.length > 220 ? teaserText.slice(0, 220).trim() + '…' : teaserText;
-                  return (
-                    <div key={section.sectionNumber} className="snapshot-section">
-                      <h4>{section.sectionNumber}. {section.heading}</h4>
-                      {teaser && <p className="snapshot-teaser">{teaser}</p>}
-                      <p className="snapshot-more">Full analysis available in the downloaded report →</p>
-                    </div>
-                  );
-                })}
+                {restSections.length > 0 && (
+                  <div className="snapshot-outline">
+                    <h4>Also in this report</h4>
+                    <ul>
+                      {restSections.map((section) => (
+                        <li key={section.sectionNumber}>{section.sectionNumber}. {section.heading}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
 
               <div style={{ textAlign: 'center', margin: '20px 0' }}>
                 <button onClick={downloadPDF}>⬇️ Download Full Report</button>
                 <button onClick={printReport} className="secondary">🖨️ Print</button>
                 {isCompetitorMilestone && matrix && (
-                  <button onClick={downloadExcel}>📊 Download Competitor Comparison (Excel)</button>
+                  <button onClick={downloadCompetitorExcel}>📊 Download Competitor Comparison (Excel)</button>
                 )}
                 {isCompetitorMilestone && matrixLoading && (
                   <span style={{ marginLeft: '12px', color: '#888', fontSize: '11pt' }}>Building competitor comparison…</span>
                 )}
                 {isCompetitorMilestone && matrixError && (
                   <div className="error" style={{ marginTop: '12px' }}>Competitor comparison unavailable: {matrixError}</div>
+                )}
+                {isFinancialMilestone && financialModel && (
+                  <button onClick={downloadFinancialExcel}>📈 Download Financial Model (Excel)</button>
+                )}
+                {isFinancialMilestone && modelLoading && (
+                  <span style={{ marginLeft: '12px', color: '#888', fontSize: '11pt' }}>Building financial model…</span>
+                )}
+                {isFinancialMilestone && modelError && (
+                  <div className="error" style={{ marginTop: '12px' }}>Financial model unavailable: {modelError}</div>
                 )}
               </div>
             </>
