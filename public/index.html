@@ -686,14 +686,14 @@
       }
     }
 
-    async function generateMilestoneReport(milestoneKey, milestoneName, sow, intake, onReport) {
+    async function generateMilestoneReport(milestoneKey, milestoneName, sow, intake, onReport, notes) {
       try {
         console.log("🎯 REPORT REQUEST:", { milestoneKey, milestoneName });
 
         const response = await fetch('/api/generate-milestone-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ milestoneKey, milestoneName, sow, intake })
+          body: JSON.stringify({ milestoneKey, milestoneName, sow, intake, notes })
         });
 
         console.log("📡 HTTP Response status:", response.status);
@@ -717,12 +717,12 @@
       }
     }
 
-    async function generateCompetitorMatrix(sow, intake, onMatrix) {
+    async function generateCompetitorMatrix(sow, intake, onMatrix, notes) {
       try {
         const response = await fetch('/api/generate-competitor-matrix', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sow, intake })
+          body: JSON.stringify({ sow, intake, notes })
         });
 
         const data = await response.json();
@@ -743,12 +743,12 @@
       }
     }
 
-    async function generateFinancialModel(sow, intake, onModel) {
+    async function generateFinancialModel(sow, intake, onModel, notes) {
       try {
         const response = await fetch('/api/generate-financial-model', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sow, intake })
+          body: JSON.stringify({ sow, intake, notes })
         });
 
         const data = await response.json();
@@ -1665,12 +1665,23 @@ ${buildReportBodyHTML(report, milestone, intake)}
     }
     const YEAR_COLS = [2, 3, 4, 5, 6]; // C,D,E,F,G — every sheet uses these 5 columns for Year 1-5
 
+    // Excel number formats applied on top of the formula/value cells above, so the workbook
+    // reads like an analyst built it by hand (currency, percentages and multiples formatted)
+    // instead of showing raw decimals (e.g. 0.08 instead of 8.0%, 35000 instead of $35,000).
+    const FMT_USD = '$#,##0';
+    const FMT_USD_1DP = '$#,##0.0';
+    const FMT_PCT = '0.0%';
+    const FMT_MULT = '0.0"x"';
+    const FMT_INT = '#,##0';
+    const FMT_NUM_1DP = '0.0';
+    function setFmt(ws, addr, fmt) { if (ws[addr]) ws[addr].z = fmt; }
+
     function buildAssumptionsSheet(model) {
       const aoa = [];
       const refs = {};
       const push = (row) => { aoa.push(row); return aoa.length; };
 
-      push(['DRIZZLA-STYLE FINANCIAL MODEL — ASSUMPTIONS']);
+      push(['FINANCIAL MODEL — ASSUMPTIONS']);
       push(['This sheet drives the whole workbook. Every other sheet computes live from these cells — change a value here and the model recalculates.']);
       push([]);
 
@@ -1698,9 +1709,9 @@ ${buildReportBodyHTML(report, milestone, intake)}
       push([]);
 
       push([null, 'E. PRICING TIERS (Monthly, USD)']);
-      (model.pricingTiers?.length ? model.pricingTiers : []).forEach(t => {
-        push([null, t.name || '', t.monthlyPriceUSD ?? 0, null, null, null, null, t.rationale || '']);
-      });
+      const pricingRows = (model.pricingTiers?.length ? model.pricingTiers : []).map(t =>
+        push([null, t.name || '', t.monthlyPriceUSD ?? 0, null, null, null, null, t.rationale || ''])
+      );
       push([]);
 
       push([null, 'F. BLENDED ACV BY YEAR (USD / client / year)']);
@@ -1754,6 +1765,40 @@ ${buildReportBodyHTML(report, milestone, intake)}
       xlFormula(ws, `C${refs.combinedFilter}`, `PRODUCT(${filterCells.join(',')})`, combinedFilterValue);
       refs.combinedFilterValue = combinedFilterValue;
       refs.model = model;
+
+      setFmt(ws, `C${refs.primarySize}`, FMT_USD_1DP);
+      setFmt(ws, `C${refs.primaryCAGR}`, FMT_PCT);
+      setFmt(ws, `C${refs.globalSize}`, FMT_USD_1DP);
+      setFmt(ws, `C${refs.globalCAGR}`, FMT_PCT);
+      filterRows.forEach(r => setFmt(ws, `C${r}`, FMT_PCT));
+      setFmt(ws, `C${refs.combinedFilter}`, FMT_PCT);
+      setFmt(ws, `C${refs.samPremium}`, FMT_USD_1DP);
+      pricingRows.forEach(r => setFmt(ws, `C${r}`, FMT_USD));
+      YEAR_COLS.forEach(c => {
+        setFmt(ws, xlAddr(c, refs.acv), FMT_USD);
+        setFmt(ws, xlAddr(c, refs.clients), FMT_INT);
+        setFmt(ws, xlAddr(c, refs.cac), FMT_USD);
+      });
+      setFmt(ws, `C${refs.churn}`, FMT_PCT);
+      setFmt(ws, `C${refs.nrr}`, FMT_PCT);
+      setFmt(ws, `C${refs.margin}`, FMT_PCT);
+      for (let r = refs.segmentsStart; r <= refs.segmentsEnd; r++) {
+        YEAR_COLS.forEach(c => setFmt(ws, xlAddr(c, r), FMT_INT));
+        setFmt(ws, `H${r}`, FMT_USD);
+        setFmt(ws, `I${r}`, FMT_USD);
+      }
+      for (let r = refs.geoStart; r <= refs.geoEnd; r++) {
+        setFmt(ws, `D${r}`, FMT_PCT);
+        setFmt(ws, `E${r}`, FMT_PCT);
+        setFmt(ws, `F${r}`, FMT_PCT);
+        setFmt(ws, `G${r}`, FMT_USD_1DP);
+        for (let c = 8; c <= 12; c++) setFmt(ws, xlAddr(c, r), FMT_INT);
+        for (let c = 13; c <= 17; c++) setFmt(ws, xlAddr(c, r), FMT_USD);
+      }
+      setFmt(ws, `C${refs.revenueMultiple}`, FMT_MULT);
+      setFmt(ws, `C${refs.equityPct}`, FMT_PCT);
+      setFmt(ws, `C${refs.minRaise}`, FMT_USD);
+      setFmt(ws, `C${refs.ltvHorizon}`, FMT_INT);
 
       ws['!cols'] = [{ wch: 2 }, { wch: 34 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 55 }];
       return { ws, refs, model };
@@ -1823,6 +1868,20 @@ ${buildReportBodyHTML(report, milestone, intake)}
         xlFormula(ws, xlAddr(col, N.rMonthly), `${L}${N.rArr}/12`, arrV / 12);
       });
 
+      YEAR_COLS.forEach(col => {
+        setFmt(ws, xlAddr(col, N.rTam), FMT_USD_1DP);
+        setFmt(ws, xlAddr(col, N.rSam), FMT_USD_1DP);
+        setFmt(ws, xlAddr(col, N.rSamPct), FMT_PCT);
+        setFmt(ws, xlAddr(col, N.rSom), FMT_USD_1DP);
+        setFmt(ws, xlAddr(col, N.rSomPct), FMT_PCT);
+        setFmt(ws, xlAddr(col, N.rClients), FMT_INT);
+        setFmt(ws, xlAddr(col, N.rAcv), FMT_USD);
+        setFmt(ws, xlAddr(col, N.rArr), FMT_USD);
+        setFmt(ws, xlAddr(col, N.rArrGrowth), FMT_PCT);
+        setFmt(ws, xlAddr(col, N.rGP), FMT_USD);
+        setFmt(ws, xlAddr(col, N.rMonthly), FMT_USD);
+      });
+
       ws['!cols'] = [{ wch: 2 }, { wch: 38 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
       return { ws, arrRow: N.rArr, arrVals };
     }
@@ -1888,6 +1947,18 @@ ${buildReportBodyHTML(report, milestone, intake)}
         xlFormula(ws, xlAddr(col, N.rChurn), `-${L}${N.rOpening}*Assumptions!$C$${refs.churn}`, churnArrV);
 
         xlFormula(ws, xlAddr(col, N.rValidation), `${L}${N.rOpening}*(1-Assumptions!$C$${refs.churn})+${L}${N.rNew}+${L}${N.rExpansion}-${L}${N.rClosing}`, retainedV + newArrV + expansionV - closingV);
+      });
+
+      YEAR_COLS.forEach(col => {
+        setFmt(ws, xlAddr(col, N.rClients), FMT_INT);
+        setFmt(ws, xlAddr(col, N.rAcv), FMT_USD);
+        setFmt(ws, xlAddr(col, N.rClosing), FMT_USD);
+        setFmt(ws, xlAddr(col, N.rOpening), FMT_USD);
+        setFmt(ws, xlAddr(col, N.rNewClients), FMT_INT);
+        setFmt(ws, xlAddr(col, N.rNew), FMT_USD);
+        setFmt(ws, xlAddr(col, N.rExpansion), FMT_USD);
+        setFmt(ws, xlAddr(col, N.rChurn), FMT_USD);
+        setFmt(ws, xlAddr(col, N.rValidation), FMT_USD);
       });
 
       ws['!cols'] = [{ wch: 2 }, { wch: 52 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
@@ -1979,6 +2050,16 @@ ${buildReportBodyHTML(report, milestone, intake)}
         const primaryArrV = tamSamSom.arrVals[i];
         const grandTotalF = geoArrTotalRow ? `'TAM SAM SOM'!${L}${tamSamSom.arrRow}+${L}${geoArrTotalRow}` : `'TAM SAM SOM'!${L}${tamSamSom.arrRow}`;
         xlFormula(ws, xlAddr(col, grandTotalRow), grandTotalF, primaryArrV + geoArrTotalV);
+
+        for (let r = segStartRow; r < segStartRow + segments.length; r++) setFmt(ws, xlAddr(col, r), FMT_USD);
+        if (segTotalRow) setFmt(ws, xlAddr(col, segTotalRow), FMT_USD);
+        geoTamRows.forEach(r => setFmt(ws, xlAddr(col, r), FMT_USD_1DP));
+        if (geoTamTotalRow) setFmt(ws, xlAddr(col, geoTamTotalRow), FMT_USD_1DP);
+        geoSamRows.forEach(r => setFmt(ws, xlAddr(col, r), FMT_USD_1DP));
+        if (geoSamTotalRow) setFmt(ws, xlAddr(col, geoSamTotalRow), FMT_USD_1DP);
+        geoArrRows.forEach(r => setFmt(ws, xlAddr(col, r), FMT_USD));
+        if (geoArrTotalRow) setFmt(ws, xlAddr(col, geoArrTotalRow), FMT_USD);
+        setFmt(ws, xlAddr(col, grandTotalRow), FMT_USD);
       });
 
       ws['!cols'] = [{ wch: 2 }, { wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
@@ -2029,6 +2110,13 @@ ${buildReportBodyHTML(report, milestone, intake)}
         }
         salaryVals.push(roleSalary);
         annualVals.push(roleAnnual);
+
+        setFmt(ws, `D${row}`, FMT_PCT);
+        for (let y = 0; y < 5; y++) {
+          setFmt(ws, xlAddr(4 + y, row), FMT_INT);
+          setFmt(ws, xlAddr(9 + y, row), FMT_USD);
+          setFmt(ws, xlAddr(14 + y, row), FMT_USD);
+        }
       });
 
       // Totals row: headcount E-I, annual cost O-S
@@ -2041,6 +2129,8 @@ ${buildReportBodyHTML(report, milestone, intake)}
           const annTotal = annualVals.reduce((acc, vals) => acc + vals[y], 0);
           xlFormula(ws, xlAddr(hcCol, totalRow), `SUM(${hcRange})`, hcTotal);
           xlFormula(ws, xlAddr(annCol, totalRow), `SUM(${annRange})`, annTotal);
+          setFmt(ws, xlAddr(hcCol, totalRow), FMT_INT);
+          setFmt(ws, xlAddr(annCol, totalRow), FMT_USD);
         }
       }
 
@@ -2106,6 +2196,9 @@ ${buildReportBodyHTML(report, milestone, intake)}
           }
           xlFormula(ws, xlAddr(col, item.row), f, v);
         }
+        for (let y = 0; y < 5; y++) setFmt(ws, xlAddr(4 + y, item.row), FMT_USD);
+        setFmt(ws, `J${item.row}`, FMT_PCT);
+        setFmt(ws, `K${item.row}`, FMT_USD);
       });
 
       // Second pass: fill accurate cached values for escalating and headcount-driven cells
@@ -2144,6 +2237,7 @@ ${buildReportBodyHTML(report, milestone, intake)}
             total += ws[addr]?.v ?? 0;
           }
           xlFormula(ws, xlAddr(col, row), `SUM(${range})`, total);
+          setFmt(ws, xlAddr(col, row), FMT_USD);
         }
       });
 
@@ -2152,6 +2246,7 @@ ${buildReportBodyHTML(report, milestone, intake)}
         const refList = subtotalRows.map(s => xlAddr(col, s.row));
         const total = subtotalRows.reduce((acc, s) => acc + (ws[xlAddr(col, s.row)]?.v ?? 0), 0);
         xlFormula(ws, xlAddr(col, grandTotalRow), `SUM(${refList.join(',')})`, total);
+        setFmt(ws, xlAddr(col, grandTotalRow), FMT_USD);
       }
 
       ws['!cols'] = [{ wch: 2 }, { wch: 24 }, { wch: 34 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 50 }];
@@ -2269,6 +2364,12 @@ ${buildReportBodyHTML(report, milestone, intake)}
         xlFormula(ws, xlAddr(col, rPostMoney), `${L}${rPreMoney}+${L}${rRaise}`, preMoneyV + raiseV);
         const gapV = Math.max(0, -cumCash);
         xlFormula(ws, xlAddr(col, rFundingGap), `MAX(0,-${L}${rCumCash})`, gapV);
+
+        [rRevenue, rCogs, rGrossProfit, rSalaries, rOpex, rTotalCosts, rEbitda, rNetCash, rCumCash, rAcv, rMrr, rCac, rLtv, rPreMoney, rRaise, rPostMoney, rFundingGap]
+          .forEach(r => setFmt(ws, xlAddr(col, r), FMT_USD));
+        setFmt(ws, xlAddr(col, rEbitdaMargin), FMT_PCT);
+        setFmt(ws, xlAddr(col, rLtvCac), FMT_MULT);
+        setFmt(ws, xlAddr(col, rPayback), FMT_NUM_1DP);
       });
 
       ws['!cols'] = [{ wch: 2 }, { wch: 42 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
@@ -2443,6 +2544,57 @@ ${buildReportBodyHTML(report, milestone, intake)}
         generateFinancialModelExcel(financialModel, milestone, intake);
       };
 
+      const [regenNotes, setRegenNotes] = useState('');
+      const [showRegenBox, setShowRegenBox] = useState(false);
+      const isBusy = loading || matrixLoading || modelLoading;
+
+      const regenerateMilestone = () => {
+        const trimmedNotes = regenNotes.trim() || undefined;
+
+        setLoading(true);
+        setError(null);
+        generateMilestoneReport(milestone.key, milestone.name, sow, intake, (result) => {
+          setLoading(false);
+          if (result.error) {
+            setError(result.error);
+          } else {
+            setReport(result);
+            onCacheUpdate(milestone.key, { report: result, reportSignature, generatedAt: new Date().toISOString() });
+          }
+        }, trimmedNotes);
+
+        if (isCompetitorMilestone) {
+          setMatrixLoading(true);
+          setMatrixError(null);
+          generateCompetitorMatrix(sow, intake, (result) => {
+            setMatrixLoading(false);
+            if (result.error) {
+              setMatrixError(result.error);
+            } else {
+              setMatrix(result);
+              onCacheUpdate(milestone.key, { matrix: result, matrixSignature, generatedAt: new Date().toISOString() });
+            }
+          }, trimmedNotes);
+        }
+
+        if (isFinancialMilestone) {
+          setModelLoading(true);
+          setModelError(null);
+          generateFinancialModel(sow, intake, (result) => {
+            setModelLoading(false);
+            if (result.error) {
+              setModelError(result.error);
+            } else {
+              setFinancialModel(result);
+              onCacheUpdate(milestone.key, { financialModel: result, modelSignature, generatedAt: new Date().toISOString() });
+            }
+          }, trimmedNotes);
+        }
+
+        setShowRegenBox(false);
+        setRegenNotes('');
+      };
+
       const numberedReport = report ? parseAndNumberReport(report) : null;
       const summarySection = numberedReport?.sections?.[0];
       const restSections = numberedReport?.sections?.slice(1) || [];
@@ -2453,7 +2605,12 @@ ${buildReportBodyHTML(report, milestone, intake)}
 
           {loading && <div className="loading"><div className="spinner"></div> Generating report...</div>}
 
-          {error && <div className="error">Error: {error}</div>}
+          {error && (
+            <div className="error">
+              Error: {error}
+              <button className="secondary" style={{ marginLeft: '12px' }} onClick={() => regenerateMilestone()}>🔄 Try Again</button>
+            </div>
+          )}
 
           {report && (
             <>
@@ -2499,6 +2656,30 @@ ${buildReportBodyHTML(report, milestone, intake)}
                 )}
                 {isFinancialMilestone && modelError && (
                   <div className="error" style={{ marginTop: '12px' }}>Financial model unavailable: {modelError}</div>
+                )}
+              </div>
+
+              <div style={{ margin: '8px 0 20px', textAlign: 'center' }}>
+                {!showRegenBox && (
+                  <button className="secondary" onClick={() => setShowRegenBox(true)} disabled={isBusy}>
+                    🔄 Regenerate This Milestone
+                  </button>
+                )}
+                {showRegenBox && (
+                  <div className="card" style={{ marginTop: '12px', textAlign: 'left', maxWidth: '560px', marginLeft: 'auto', marginRight: 'auto' }}>
+                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '11pt', color: '#555' }}>
+                      Optional: describe what should change (leave blank to just run it again as-is). Your current version stays saved until this finishes.
+                    </label>
+                    <textarea
+                      value={regenNotes}
+                      onChange={(e) => setRegenNotes(e.target.value)}
+                      placeholder="e.g. Focus more on the EU market, assume a higher price point, add a more conservative scenario…"
+                      rows={3}
+                      style={{ width: '100%', marginBottom: '10px', fontFamily: 'inherit' }}
+                    />
+                    <button onClick={regenerateMilestone} disabled={isBusy}>🔄 Regenerate</button>
+                    <button className="secondary" onClick={() => { setShowRegenBox(false); setRegenNotes(''); }} disabled={isBusy}>Cancel</button>
+                  </div>
                 )}
               </div>
             </>
