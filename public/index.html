@@ -2316,20 +2316,30 @@ ${buildReportBodyHTML(report, milestone, intake)}
       XLSX.writeFile(wb, `MarketEdge-${milestone.name.replace(/\s+/g, '-')}-Model.xlsx`);
     }
 
-    // A cached report/matrix is only reused while this signature still matches the
-    // current SOW and intake — either changing invalidates every cached milestone entry
-    // whose signature was computed from the old values, forcing a fresh generation.
+    // A cached report/matrix/model is only reused while its own signature still matches
+    // the current SOW and intake — either changing invalidates it, forcing a fresh
+    // generation. Each of the three cached values gets its own signature field (not one
+    // shared field) so they can never clobber or falsely validate each other, and each
+    // carries its own version tag — bump a tag here whenever that value's JSON schema
+    // changes, so cache entries written under the old schema are invalidated rather than
+    // silently fed into a renderer that no longer expects their shape.
     function computeReportSignature(sow, intake) {
       return JSON.stringify({ sow, intake });
     }
+    const REPORT_CACHE_VERSION = 'report-v1';
+    const MATRIX_CACHE_VERSION = 'matrix-v1';
+    const MODEL_CACHE_VERSION = 'model-v2'; // v2: full formula-linked assumptions schema
 
     function MilestoneStep({ milestone, sow, intake, cachedEntry, onCacheUpdate, onNext, onPrev, isFirst, isLast }) {
-      const signature = computeReportSignature(sow, intake);
+      const baseSignature = computeReportSignature(sow, intake);
+      const reportSignature = `${baseSignature}|${REPORT_CACHE_VERSION}`;
+      const matrixSignature = `${baseSignature}|${MATRIX_CACHE_VERSION}`;
+      const modelSignature = `${baseSignature}|${MODEL_CACHE_VERSION}`;
       const isCompetitorMilestone = milestone.key === 'competitor';
       const isFinancialMilestone = milestone.key === 'financial';
-      const cacheHasReport = !!(cachedEntry && cachedEntry.sourceSignature === signature && cachedEntry.report);
-      const cacheHasMatrix = !!(cachedEntry && cachedEntry.sourceSignature === signature && cachedEntry.matrix);
-      const cacheHasModel = !!(cachedEntry && cachedEntry.sourceSignature === signature && cachedEntry.financialModel);
+      const cacheHasReport = !!(cachedEntry && cachedEntry.reportSignature === reportSignature && cachedEntry.report);
+      const cacheHasMatrix = !!(cachedEntry && cachedEntry.matrixSignature === matrixSignature && cachedEntry.matrix);
+      const cacheHasModel = !!(cachedEntry && cachedEntry.modelSignature === modelSignature && cachedEntry.financialModel);
 
       const [report, setReport] = useState(() => cacheHasReport ? cachedEntry.report : null);
       const [loading, setLoading] = useState(() => !cacheHasReport);
@@ -2363,7 +2373,7 @@ ${buildReportBodyHTML(report, milestone, intake)}
           } else {
             console.log("Report loaded successfully");
             setReport(result);
-            onCacheUpdate(milestone.key, { report: result, sourceSignature: signature, generatedAt: new Date().toISOString() });
+            onCacheUpdate(milestone.key, { report: result, reportSignature, generatedAt: new Date().toISOString() });
           }
         });
         return () => { cancelled = true; };
@@ -2383,7 +2393,7 @@ ${buildReportBodyHTML(report, milestone, intake)}
             setMatrixError(result.error);
           } else {
             setMatrix(result);
-            onCacheUpdate(milestone.key, { matrix: result, sourceSignature: signature, generatedAt: new Date().toISOString() });
+            onCacheUpdate(milestone.key, { matrix: result, matrixSignature, generatedAt: new Date().toISOString() });
           }
         });
         return () => { cancelled = true; };
@@ -2403,7 +2413,7 @@ ${buildReportBodyHTML(report, milestone, intake)}
             setModelError(result.error);
           } else {
             setFinancialModel(result);
-            onCacheUpdate(milestone.key, { financialModel: result, sourceSignature: signature, generatedAt: new Date().toISOString() });
+            onCacheUpdate(milestone.key, { financialModel: result, modelSignature, generatedAt: new Date().toISOString() });
           }
         });
         return () => { cancelled = true; };
