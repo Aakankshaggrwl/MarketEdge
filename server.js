@@ -50,40 +50,104 @@ const MILESTONE_FOCUS = {
   execbrief: `Cover, at minimum: a synthesis of every prior milestone into the 3-5 decisions that matter most, each with its supporting evidence, so a time-constrained reader gets the whole strategy without reading the underlying reports.`,
 };
 
+// Repairs JSON that was cut off mid-response (e.g. hit the token limit while writing a
+// long array of objects): walks the string tracking bracket/string depth, drops whatever
+// trailing fragment never closed (an unterminated string, a dangling key with no value,
+// a half-started object), then closes every bracket that was still open. Lets a
+// long-but-valid response (e.g. 12 of 15 competitors fully written) come back as partial
+// data instead of an error — the caller is responsible for discarding any resulting
+// empty/incomplete trailing entry (e.g. an array element with no name).
+function repairTruncatedJSON(text) {
+  function scan(str) {
+    const stack = [];
+    let inString = false;
+    let escapeNext = false;
+    for (const ch of str) {
+      if (escapeNext) { escapeNext = false; continue; }
+      if (ch === '\\' && inString) { escapeNext = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{' || ch === '[') stack.push(ch);
+      else if (ch === '}' || ch === ']') stack.pop();
+    }
+    return { stack, inString };
+  }
+
+  let s = text;
+  if (scan(s).inString) {
+    // Cut back to before whichever string (a key or a value) never closed.
+    s = s.slice(0, s.lastIndexOf('"'));
+  }
+
+  // Repeatedly strip whatever dangling token is left at the end — trailing whitespace,
+  // a trailing comma, or a trailing colon together with the key that preceded it
+  // (whether that key was the object's first property or came after a comma) — until
+  // the tail is no longer dangling.
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\s+$/, '');
+    if (s.endsWith(',')) {
+      s = s.slice(0, -1);
+      continue;
+    }
+    if (s.endsWith(':')) {
+      s = s.slice(0, -1).replace(/\s+$/, '');
+      const keyMatch = s.match(/"(?:[^"\\]|\\.)*"$/);
+      if (keyMatch) s = s.slice(0, s.length - keyMatch[0].length);
+      continue;
+    }
+  } while (s !== prev);
+
+  const { stack } = scan(s);
+  let closing = '';
+  for (let i = stack.length - 1; i >= 0; i--) {
+    closing += stack[i] === '{' ? '}' : ']';
+  }
+  return s + closing;
+}
+
 // Function to safely parse JSON
 function safeParseJSON(text) {
   try {
     // Remove markdown code blocks
     let clean = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-    
+
     // First attempt: direct parse
     try {
       return JSON.parse(clean);
     } catch (e1) {
       // Second attempt: normalize whitespace
-      clean = clean.replace(/[\r\n]/g, " ").replace(/\s+/g, " ");
+      const normalized = clean.replace(/[\r\n]/g, " ").replace(/\s+/g, " ");
       try {
-        return JSON.parse(clean);
+        return JSON.parse(normalized);
       } catch (e2) {
-        // Third attempt: fix common quote escaping issues
-        clean = clean.replace(/([^\\])"/g, '$1\\"').replace(/^"/, '\\"');
+        // Third attempt: repair a response that was likely cut off by the token limit —
+        // try this on the still-clean text before the more destructive fallbacks below
+        // get a chance to mangle the quote structure they're trying to fix.
         try {
-          return JSON.parse(clean);
-        } catch (e3) {
-          // Fourth attempt: extract JSON object more carefully
-          const match = clean.match(/\{[\s\S]*\}(?=\s*$)/);
-          if (match) {
-            try {
-              return JSON.parse(match[0]);
-            } catch (e4) {
-              // Last resort: try to find valid JSON by removing problematic content
-              let jsonStr = match[0];
-              // Fix unclosed strings
-              jsonStr = jsonStr.replace(/: "([^"]*$)/g, ': ""');
-              return JSON.parse(jsonStr);
+          return JSON.parse(repairTruncatedJSON(normalized));
+        } catch (eRepair) {
+          // Fourth attempt: fix common quote escaping issues
+          let escaped = normalized.replace(/([^\\])"/g, '$1\\"').replace(/^"/, '\\"');
+          try {
+            return JSON.parse(escaped);
+          } catch (e3) {
+            // Fifth attempt: extract JSON object more carefully
+            const match = escaped.match(/\{[\s\S]*\}(?=\s*$)/);
+            if (match) {
+              try {
+                return JSON.parse(match[0]);
+              } catch (e4) {
+                // Last resort: try to find valid JSON by removing problematic content
+                let jsonStr = match[0];
+                // Fix unclosed strings
+                jsonStr = jsonStr.replace(/: "([^"]*$)/g, ': ""');
+                return JSON.parse(jsonStr);
+              }
             }
+            throw e2;
           }
-          throw e2;
         }
       }
     }
@@ -437,7 +501,9 @@ Respond with ONLY valid JSON (no markdown, no fences):
 
     const message = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 8000,
+      // 15 competitors x 18 fields easily runs past 8000 tokens of JSON and gets cut off
+      // mid-string — that truncation is what was surfacing as a JSON parse error.
+      max_tokens: 16000,
       system: SENIOR_VOICE + ` Respond with ONLY valid JSON matching the exact structure requested. No markdown, no code fences, no prose before or after the JSON. Every competitor object must include a value for every column key listed — never omit a key.`,
       messages: [{ role: "user", content: prompt }],
     });
@@ -451,12 +517,18 @@ Respond with ONLY valid JSON (no markdown, no fences):
 
     const matrix = safeParseJSON(text);
 
-    if (!matrix?.competitors || !Array.isArray(matrix.competitors) || matrix.competitors.length === 0) {
-      return res.status(500).json({ error: "Invalid competitor matrix: missing or empty competitors" });
+    if (!matrix?.competitors || !Array.isArray(matrix.competitors)) {
+      return res.status(500).json({ error: "Invalid competitor matrix: missing competitors" });
     }
 
+    // Drop any incomplete trailing entry a truncation repair may have left behind
+    // (e.g. the response got cut off mid-competitor and only an empty shell survived).
     matrix.columns = COMPETITOR_MATRIX_COLUMNS;
-    matrix.competitors = matrix.competitors.slice(0, 15);
+    matrix.competitors = matrix.competitors.filter(c => c && c.name && c.values).slice(0, 15);
+
+    if (matrix.competitors.length === 0) {
+      return res.status(500).json({ error: "Invalid competitor matrix: missing or empty competitors" });
+    }
 
     res.status(200).json({ success: true, matrix });
   } catch (err) {
@@ -523,7 +595,7 @@ Include at least 6 rows in threeYearPL.rows (in the order shown, ending in EBITD
 
     const message = await client.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 6000,
+      max_tokens: 8000,
       system: SENIOR_VOICE + ` Respond with ONLY valid JSON matching the exact structure requested. No markdown, no code fences, no prose before or after the JSON. Every field must be filled with a specific value — never a placeholder.`,
       messages: [{ role: "user", content: prompt }],
     });
@@ -536,6 +608,20 @@ Include at least 6 rows in threeYearPL.rows (in the order shown, ending in EBITD
     }
 
     const model = safeParseJSON(text);
+
+    // Drop any incomplete trailing entry a truncation repair may have left behind.
+    if (model?.threeYearPL?.rows) {
+      model.threeYearPL.rows = model.threeYearPL.rows.filter(r => r && r.line && Array.isArray(r.values) && r.values.length > 0);
+    }
+    if (Array.isArray(model?.marketSizing)) {
+      model.marketSizing = model.marketSizing.filter(r => r && r.metric && r.value);
+    }
+    if (Array.isArray(model?.unitEconomics)) {
+      model.unitEconomics = model.unitEconomics.filter(r => r && r.metric && r.value);
+    }
+    if (Array.isArray(model?.fundingNeeds)) {
+      model.fundingNeeds = model.fundingNeeds.filter(r => r && r.milestone && r.amount);
+    }
 
     if (!model?.threeYearPL?.rows || !Array.isArray(model.threeYearPL.rows) || model.threeYearPL.rows.length === 0) {
       return res.status(500).json({ error: "Invalid financial model: missing or empty P&L rows" });
