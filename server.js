@@ -312,6 +312,22 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 // Parse the ---SECTION----delimited text report into { title, sections: [{heading, content}] }
+// Hard cap on word count — cuts at the nearest sentence boundary within budget where
+// possible, otherwise a clean word boundary. Keeps any "**bold**" markers balanced.
+function truncateToWordLimit(text, maxWords) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return text;
+
+  const truncated = words.slice(0, maxWords).join(' ');
+  const lastSentenceEnd = Math.max(truncated.lastIndexOf('. '), truncated.lastIndexOf('.\n'));
+  let result = lastSentenceEnd > truncated.length * 0.6 ? truncated.slice(0, lastSentenceEnd + 1) : truncated;
+
+  const boldMarkers = (result.match(/\*\*/g) || []).length;
+  if (boldMarkers % 2 !== 0) result += '**';
+
+  return result.trim();
+}
+
 function parseTextReport(rawText, fallbackTitle) {
   const parts = rawText.split('---SECTION---').map(p => p.trim()).filter(Boolean);
 
@@ -350,15 +366,22 @@ function parseTextReport(rawText, fallbackTitle) {
     sections.push({ heading: 'Report', content: rawText.trim() });
   }
 
+  // The Executive Summary is the on-screen snapshot shown before the client opens the
+  // full report — hard-cap it at 1000 words regardless of what the model actually produced.
+  const summarySection = sections.find(s => s.heading === 'Executive Summary');
+  if (summarySection) {
+    summarySection.content = truncateToWordLimit(summarySection.content, 1000);
+  }
+
   return { title, sections };
 }
 
 // Generate comprehensive milestone report (with detailed logging)
 app.post('/api/generate-milestone-report', async (req, res) => {
   try {
-    const { milestoneKey, milestoneName, sow, intake } = req.body;
-    
-    console.log("📋 Report request:", { milestoneKey, milestoneName });
+    const { milestoneKey, milestoneName, sow, intake, notes } = req.body;
+
+    console.log("📋 Report request:", { milestoneKey, milestoneName, hasNotes: !!notes });
 
     if (!milestoneKey || !milestoneName || !sow || !intake) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -366,17 +389,20 @@ app.post('/api/generate-milestone-report', async (req, res) => {
 
     const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
     const focus = MILESTONE_FOCUS[milestoneKey] || `Cover the core analytical work this milestone promises, in full depth, organized into clearly labeled sub-sections.`;
+    const notesBlock = notes && notes.trim()
+      ? `\n\nThe client asked for this regenerated with the following changes — apply them throughout, overriding anything above they conflict with: ${notes.trim()}`
+      : '';
 
     let prompt = `You are a senior strategy consultant. Generate a comprehensive, in-depth report for "${milestoneName}". This is a deliverable the client is paying for — it should read like a 15-20 page strategy document, not a summary. Write in full paragraphs, be specific and numeric wherever the brief gives you facts to work with, and never pad with generic filler to hit length — every paragraph must carry real analysis.
 
 Client: ${briefContext}
-Scope: ${sow.engagement_summary}
+Scope: ${sow.engagement_summary}${notesBlock}
 
 Respond with ONLY these sections separated by ---SECTION---. Follow the target length for each section — together they should total roughly 7,500-10,000 words. Structure each section using the "##", "###", "-", and "**bold**" conventions from your system instructions wherever they help a senior reader scan the section quickly — never as a bare list with no surrounding prose:
 
 TITLE: ${milestoneName}
 ---SECTION---
-EXECUTIVE_SUMMARY: [800-1000 words. This must stand alone as a complete summary of the whole report — it is what the client reads on-screen before ever opening the full document, so it needs to carry the real substance, not just tease it. Cover: the headline conclusions and why they matter to this client specifically; the 3-4 most important findings from the analysis; and the top decisive recommendation(s). Use "## " subsections to organize it (e.g. "## Headline Conclusions", "## Key Findings At A Glance", "## Top Recommendation") rather than one long block of prose.]
+EXECUTIVE_SUMMARY: [700-1000 words — hard cap, do not exceed 1000 words, content beyond that will be cut off. This must stand alone as a complete summary of the whole report — it is what the client reads on-screen before ever opening the full document, so it needs to carry the real substance, not just tease it. Cover: the headline conclusions and why they matter to this client specifically; the 3-4 most important findings from the analysis; and the top decisive recommendation(s). Use "## " subsections to organize it (e.g. "## Headline Conclusions", "## Key Findings At A Glance", "## Top Recommendation") rather than one long block of prose.]
 ---SECTION---
 MARKET_CONTEXT: [600-800 words. The landscape this client is operating in, grounded in their industry, stage, and target market. Use 2-3 "## " subsections for the distinct parts of the landscape (e.g. market size, dynamics, timing), each opened with a paragraph and, where there are concrete figures worth calling out, followed by "- **Label:** ..." bullets.]
 ---SECTION---
@@ -477,7 +503,7 @@ const COMPETITOR_MATRIX_COLUMNS = [
 // Excel download). Only used for the Competitor Landscape milestone.
 app.post('/api/generate-competitor-matrix', async (req, res) => {
   try {
-    const { sow, intake } = req.body;
+    const { sow, intake, notes } = req.body;
 
     if (!sow || !intake) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -485,11 +511,14 @@ app.post('/api/generate-competitor-matrix', async (req, res) => {
 
     const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
     const columnSpecJSON = JSON.stringify(COMPETITOR_MATRIX_COLUMNS);
+    const notesBlock = notes && notes.trim()
+      ? `\n\nThe client asked for this regenerated with the following changes — apply them throughout, overriding anything above they conflict with: ${notes.trim()}`
+      : '';
 
     const prompt = `You are a senior strategy consultant building a competitor comparison matrix for a client.
 
 Client: ${briefContext}
-Scope: ${sow.engagement_summary}
+Scope: ${sow.engagement_summary}${notesBlock}
 
 Identify real, specific, named competitors relevant to THIS client's industry and target market — both direct and indirect. Do not invent generic placeholder names; only include companies you are confident are real. Include as many as are genuinely relevant, up to a maximum of 15 — prioritize relevance over hitting exactly 15, and do not pad with weak or irrelevant entries.
 
@@ -546,18 +575,21 @@ Respond with ONLY valid JSON (no markdown, no fences):
 // Only used for the Financial Analysis milestone.
 app.post('/api/generate-financial-model', async (req, res) => {
   try {
-    const { sow, intake } = req.body;
+    const { sow, intake, notes } = req.body;
 
     if (!sow || !intake) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     const briefContext = `Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
+    const notesBlock = notes && notes.trim()
+      ? `\n\nThe client asked for this regenerated with the following changes — apply them throughout, overriding anything above they conflict with: ${notes.trim()}`
+      : '';
 
     const prompt = `You are a financial analyst with 15+ years of experience building operating models for growth-stage companies. Build the complete set of ASSUMPTIONS behind a 5-year financial model for this client — not the computed outputs, the raw inputs a real model would be built from. Every figure must be a specific, defensible, industry-grounded estimate — never a placeholder, never "$X" or "TBD". Where a number could look arbitrary, the accompanying note must say how you derived it (comparable pricing, published market sizing, standard SaaS/industry benchmarks, etc.).
 
 Client: ${briefContext}
-Scope: ${sow.engagement_summary}
+Scope: ${sow.engagement_summary}${notesBlock}
 
 Respond with ONLY valid JSON (no markdown, no fences) matching this exact structure. All money figures are plain numbers in USD (no currency symbols, no commas, no strings like "$1.2M" — write 1200000). All percentages are decimals (12% -> 0.12). Keep every "note"/"rationale" field to one short sentence — this is a dense data table, not a report.
 
