@@ -11,6 +11,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js"></script>
 
   <style>
     * {
@@ -67,8 +68,16 @@
       font-weight: 600;
     }
 
-    .sidebar-step:hover {
+    .sidebar-step:not(.active):not(.completed):hover {
       background: rgba(255,255,255,0.2);
+    }
+
+    .sidebar-step.completed:not(.active):hover {
+      background: #0F9E91;
+    }
+
+    .sidebar-step.completed::before {
+      content: '✓ ';
     }
 
     .sidebar-business-info {
@@ -530,13 +539,65 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.7; }
     }
+
+    .report-table-wrap { overflow-x: auto; margin: 10px 0 16px; }
+    .report-table { border-collapse: collapse; width: 100%; font-size: 10.5pt; font-family: 'Calibri', 'Carlito', 'Segoe UI', Arial, sans-serif; }
+    .report-table th { background: #102A43; color: #fff; text-align: left; padding: 8px 10px; font-weight: 600; }
+    .report-table td { padding: 7px 10px; border-bottom: 1px solid #E3E8EC; color: #25384A; vertical-align: top; }
+    .report-table tr:nth-child(even) td { background: #F7F9FA; }
+
+    a.cite { color: #0F766E; font-size: 0.82em; font-weight: 600; text-decoration: none; vertical-align: super; line-height: 0; margin-left: 1px; }
+    a.cite:hover { text-decoration: underline; }
+
+    .ai-disclaimer { font-size: 12.5px; color: #5b6470; background: #F4F6F8; border-radius: 6px; padding: 10px 14px; margin: 12px 0; line-height: 1.5; }
+    .notice { background: #FFF8E6; border: 1px solid #F1DFA6; color: #6b4e00; border-radius: 6px; padding: 12px 14px; margin: 12px 0; font-size: 14px; }
+    .notice button { margin: 8px 8px 0 0; padding: 8px 14px; font-size: 13px; }
+
+    .sources-panel { border-top: 1px solid #e5e5e5; margin-top: 20px; padding-top: 14px; }
+    .sources-panel summary { cursor: pointer; font-weight: 700; color: #102A43; font-size: 12pt; }
+    .sources-panel ol { margin: 10px 0 0 22px; font-size: 13px; line-height: 1.7; }
+    .sources-panel a { color: #0F766E; word-break: break-word; }
+
+    .progress-line { display: flex; align-items: center; gap: 10px; color: #445; font-size: 14px; margin: 8px 0; }
+    .progress-line .muted { color: #889; font-size: 12.5px; }
+
+    .cost-line { font-size: 12.5px; color: #5b6470; margin: 6px 0 0; text-align: center; }
+    .sidebar-cost { font-size: 11.5px; color: #cfe; margin-top: 6px; }
+
+    .research-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }
+    .research-stat { background: #F7FAF9; border: 1px solid #DCE7E4; border-radius: 8px; padding: 14px; }
+    .research-stat .value { font-size: 26px; font-weight: 700; color: #0F766E; }
+    .research-stat .label { font-size: 12.5px; color: #556; }
+    .fact-list { list-style: none; margin: 8px 0; padding: 0; }
+    .fact-list li { padding: 8px 0; border-bottom: 1px solid #eef1f3; font-size: 14px; line-height: 1.5; }
+
+    .consent { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: #334; margin: 16px 0 4px; line-height: 1.5; }
+    .consent input { width: auto; margin: 3px 0 0; }
+
+    .complete-table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 12px 0; }
+    .complete-table th, .complete-table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #eee; }
+    .complete-table td.num, .complete-table th.num { text-align: right; }
+
+    .app-footer { text-align: center; font-size: 12.5px; color: #778; padding: 24px 16px 32px; }
+    .app-footer a { color: #556; margin: 0 8px; }
+
+    @media (max-width: 760px) {
+      .app-container { flex-direction: column; }
+      .sidebar { width: 100%; padding: 16px; }
+      .sidebar h3 { margin-bottom: 8px; }
+      .sidebar-steps { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+      .sidebar-step { white-space: nowrap; margin: 0; }
+      .main-content { padding: 20px 16px; }
+      .grid { grid-template-columns: 1fr; }
+      h1 { font-size: 32px; }
+    }
   </style>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect, useRef, useMemo } = React;
 
     // ============ STORAGE HELPER ============
     const storage = {
@@ -550,7 +611,15 @@
         }
       },
       saveProfiles: (data) => {
-        localStorage.setItem('marketedge_profiles', JSON.stringify(data));
+        try {
+          localStorage.setItem('marketedge_profiles', JSON.stringify(data));
+        } catch (e) {
+          reportClientError('storage', e, 'saveProfiles');
+          if (!storage.warnedFull) {
+            storage.warnedFull = true;
+            alert("Your browser's storage for MarketEdge is full, so the latest results couldn't be saved. Download your reports, then delete a business you no longer need.");
+          }
+        }
       },
       getCurrentBusinessId: () => localStorage.getItem('marketedge_current_business'),
       setCurrentBusinessId: (id) => localStorage.setItem('marketedge_current_business', id),
@@ -574,7 +643,7 @@
       { key: 'entry', name: 'Market Entry Playbook', desc: 'Detailed go-to-market plan' },
       { key: 'financial', name: 'Financial Projections', desc: 'Revenue and profitability model' },
       { key: 'bizplan', name: 'Business Plan', desc: 'Comprehensive business strategy' },
-      { key: 'pitch', name: 'Pitch Deck Strategy', desc: 'Investment pitch framework' },
+      { key: 'pitch', name: 'Pitch Deck', desc: 'Investor narrative + PowerPoint deck' },
       { key: 'execbrief', name: 'Executive Brief', desc: 'High-level summary for leadership' }
     ];
 
@@ -631,143 +700,89 @@
       );
     }
 
-    // ============ API FUNCTIONS ============
-    async function generateSOW(intake, onSOW) {
+    // ============ ERROR REPORTING ============
+    function reportClientError(kind, err, context) {
       try {
-        console.log("📝 Generating SOW with intake:", intake);
-        const response = await fetch('/api/generate-sow', {
+        fetch('/api/log-error', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          keepalive: true,
           body: JSON.stringify({
-            brief: intake.brief,
-            industry: intake.industry,
-            stage: intake.stage,
-            market: intake.market,
-            goal: intake.goal
-          })
-        });
+            kind,
+            message: String(err?.message || err || 'Unknown error'),
+            stack: err?.stack ? String(err.stack) : undefined,
+            context: context ? String(context) : undefined,
+            url: location.pathname,
+          }),
+        }).catch(() => {});
+        if (window.Sentry?.captureException) window.Sentry.captureException(err instanceof Error ? err : new Error(String(err)), { tags: { kind }, extra: { context } });
+      } catch (e) { /* never let error reporting throw */ }
+    }
 
-        const data = await response.json();
-        console.log("✅ SOW generated:", data);
+    window.addEventListener('error', (e) => reportClientError('window-error', e.error || e.message, e.filename));
+    window.addEventListener('unhandledrejection', (e) => reportClientError('unhandled-rejection', e.reason));
 
-        if (!response.ok) {
-          onSOW({ error: data.error || "Failed to generate SOW" });
-          return;
+    async function loadAppConfig() {
+      try {
+        const res = await fetch('/api/config');
+        const cfg = res.ok ? await res.json() : {};
+        if (cfg.sentryDsn && !window.Sentry) {
+          const script = document.createElement('script');
+          script.src = 'https://browser.sentry-cdn.com/11.4.0/bundle.min.js';
+          script.crossOrigin = 'anonymous';
+          script.onload = () => window.Sentry?.init({ dsn: cfg.sentryDsn, tracesSampleRate: 0 });
+          document.head.appendChild(script);
         }
-
-        onSOW(data.sow);
-      } catch (err) {
-        console.error("❌ SOW generation error:", err);
-        onSOW({ error: err.message });
+        return cfg;
+      } catch (e) {
+        return {};
       }
+    }
+
+    // ============ API FUNCTIONS ============
+    // Every endpoint resolves to { data } or { error } — never throws — and failed calls
+    // are reported to the server log so they show up in monitoring.
+    async function apiPost(path, body) {
+      let response;
+      try {
+        response = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (err) {
+        reportClientError('network', err, path);
+        return { error: `Couldn't get a response from the server (${err.message}). Long reports can take a few minutes; check your connection and try again.` };
+      }
+      let data = null;
+      try { data = await response.json(); } catch (e) { /* e.g. a platform timeout page */ }
+      if (!response.ok || !data) {
+        const error = data?.error
+          || (response.status === 504 ? 'The server timed out before this finished generating. Please try again.' : `Server error (${response.status}). Please try again.`);
+        if (response.status >= 500 || !data) reportClientError('api', new Error(error), `${path} ${response.status}`);
+        return { error, usage: data?.usage };
+      }
+      return { data };
+    }
+
+    async function generateSOW(intake, onSOW) {
+      const { data, error } = await apiPost('/api/generate-sow', {
+        brief: intake.brief, industry: intake.industry, stage: intake.stage, market: intake.market, goal: intake.goal,
+      });
+      if (error) return onSOW({ error });
+      onSOW(data.sow, data.usage);
     }
 
     async function sowInteraction(userMessage, sow, intake, interactionType, onResponse) {
-      try {
-        console.log("💬 SOW interaction:", { interactionType, messageLength: userMessage.length });
-        const response = await fetch('/api/sow-interaction', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userMessage, sow, intake, interactionType })
-        });
-
-        const data = await response.json();
-        console.log("✅ Interaction response:", data);
-
-        if (!response.ok) {
-          onResponse({ error: data.error || "Failed to process interaction" });
-          return;
-        }
-
-        onResponse(data);
-      } catch (err) {
-        console.error("❌ Interaction error:", err);
-        onResponse({ error: err.message });
-      }
+      const { data, error } = await apiPost('/api/sow-interaction', { userMessage, sow, intake, interactionType });
+      onResponse(error ? { error } : data);
     }
 
-    async function generateMilestoneReport(milestoneKey, milestoneName, sow, intake, onReport, notes) {
-      try {
-        console.log("🎯 REPORT REQUEST:", { milestoneKey, milestoneName });
-
-        const response = await fetch('/api/generate-milestone-report', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ milestoneKey, milestoneName, sow, intake, notes })
-        });
-
-        console.log("📡 HTTP Response status:", response.status);
-
-        const data = await response.json();
-        console.log("📦 FULL RESPONSE:", data);
-
-        if (!response.ok) {
-          onReport({ error: data.error || "Server error" });
-          return;
-        }
-
-        if (data.success && data.report) {
-          onReport(data.report);
-        } else {
-          onReport({ error: "Invalid response structure" });
-        }
-      } catch (err) {
-        console.error("❌ FETCH ERROR:", err);
-        onReport({ error: `Network error: ${err.message}` });
-      }
-    }
-
-    async function generateCompetitorMatrix(sow, intake, onMatrix, notes) {
-      try {
-        const response = await fetch('/api/generate-competitor-matrix', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sow, intake, notes })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          onMatrix({ error: data.error || "Server error" });
-          return;
-        }
-
-        if (data.success && data.matrix) {
-          onMatrix(data.matrix);
-        } else {
-          onMatrix({ error: "Invalid response structure" });
-        }
-      } catch (err) {
-        console.error("❌ Competitor matrix fetch error:", err);
-        onMatrix({ error: `Network error: ${err.message}` });
-      }
-    }
-
-    async function generateFinancialModel(sow, intake, onModel, notes) {
-      try {
-        const response = await fetch('/api/generate-financial-model', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sow, intake, notes })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          onModel({ error: data.error || "Server error" });
-          return;
-        }
-
-        if (data.success && data.model) {
-          onModel(data.model);
-        } else {
-          onModel({ error: "Invalid response structure" });
-        }
-      } catch (err) {
-        console.error("❌ Financial model fetch error:", err);
-        onModel({ error: `Network error: ${err.message}` });
-      }
-    }
+    const fetchResearch = (ctx) => apiPost('/api/research', ctx);
+    const fetchMilestoneReport = (ctx) => apiPost('/api/generate-milestone-report', ctx);
+    const fetchCompetitorMatrix = (ctx) => apiPost('/api/generate-competitor-matrix', ctx);
+    const fetchFinancialModel = (ctx) => apiPost('/api/generate-financial-model', ctx);
+    const fetchPitchDeck = (ctx) => apiPost('/api/generate-pitch-deck', ctx);
 
     // ============ VIEWS ============
 
@@ -823,7 +838,8 @@
               <div key={business.id} className="business-card" onClick={() => onSelectBusiness(business.id)}>
                 <h3>{business.name}</h3>
                 <p>Stage: {business.stage || 'Not started'}</p>
-                <p>Milestones: {business.currentMilestoneIndex || 0} / {MILESTONE_CATALOG.length}</p>
+                <p>Milestones generated: {MILESTONE_CATALOG.filter(m => business.milestoneReports?.[m.key]?.report).length} / {MILESTONE_CATALOG.length}</p>
+                {totalUsageUSD(business) > 0 && <p>AI cost so far: {fmtUSDPrecise(totalUsageUSD(business))}</p>}
                 <p style={{ fontSize: '12px', color: '#999', marginTop: '8px' }}>
                   Created: {new Date(business.createdAt).toLocaleDateString()}
                 </p>
@@ -857,12 +873,13 @@
       );
     }
 
-    function ProgressSidebar({ currentStep, onStepClick, allSteps, currentBusinessName, onSwitchBusiness }) {
+    function ProgressSidebar({ currentStep, onStepClick, allSteps, currentBusinessName, onSwitchBusiness, totalCost }) {
       return (
         <div className="sidebar">
           <div className="sidebar-business-info">
             <div className="sidebar-business-name">📋 {currentBusinessName}</div>
             <div className="sidebar-business-stage" id="currentStageLabel">Strategy in progress</div>
+            {totalCost > 0 && <div className="sidebar-cost" title="Total AI usage cost for this engagement so far, including regenerations">AI cost so far: {fmtUSDPrecise(totalCost)}</div>}
           </div>
 
           <button className="sidebar-business-switcher" onClick={onSwitchBusiness}>
@@ -870,20 +887,23 @@
           </button>
 
           <h3>Progress</h3>
-          {allSteps.map((step, idx) => (
-            <div
-              key={step.key}
-              className={`sidebar-step ${step.completed ? 'completed' : ''} ${currentStep === step.key ? 'active' : ''}`}
-              onClick={() => onStepClick(step.key)}
-            >
-              {step.label}
-            </div>
-          ))}
+          <div className="sidebar-steps">
+            {allSteps.map((step) => (
+              <div
+                key={step.key}
+                className={`sidebar-step ${step.completed ? 'completed' : ''} ${currentStep === step.key ? 'active' : ''}`}
+                onClick={() => onStepClick(step.key)}
+              >
+                {step.label}
+              </div>
+            ))}
+          </div>
         </div>
       );
     }
 
-    function IntakeStep({ onComplete, initialIntake }) {
+    function IntakeStep({ onComplete, initialIntake, initialConsent }) {
+      const [agreed, setAgreed] = useState(!!initialConsent);
       const [intake, setIntake] = useState(initialIntake || {
         brief: '',
         industry: '',
@@ -927,13 +947,13 @@
         }
         setGenerating(true);
         setError(null);
-        generateSOW(intake, (sow) => {
+        generateSOW(intake, (sow, usage) => {
           setGenerating(false);
           if (sow?.error) {
             setError(sow.error);
             return;
           }
-          onComplete(intake, sow);
+          onComplete(intake, sow, usage);
         });
       };
 
@@ -994,7 +1014,14 @@
 
             {error && <div className="error">{error}</div>}
 
-            <button onClick={handleGenerate} disabled={generating}>
+            <label className="consent">
+              <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+              <span>
+                I agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>, and I understand my brief is sent to a third-party AI provider (Anthropic) and used for live web research to generate this analysis.
+              </span>
+            </label>
+
+            <button onClick={handleGenerate} disabled={generating || !agreed}>
               {generating ? '⏳ Generating...' : '✨ Generate SOW'}
             </button>
           </div>
@@ -1002,7 +1029,7 @@
       );
     }
 
-    function SOWStep({ sow, intake, onApprove, onRevision }) {
+    function SOWStep({ sow, intake, onApprove, onRevision, onUsage }) {
       const [messages, setMessages] = useState([
         { type: 'system', text: 'Scope of Work generated. Review and ask questions or request changes.' }
       ]);
@@ -1025,6 +1052,7 @@
         const interactionType = /\b(add|remove|drop|change|replace|revise|instead|swap|update)\b/i.test(input.trim()) ? 'revision' : 'question';
 
         sowInteraction(input, sow, intake, interactionType, (response) => {
+          if (response.usage) onUsage?.('sow-chat', null, response.usage);
           setLoading(false);
 
           if (response.error) {
@@ -1036,7 +1064,7 @@
             setMessages(prev => [...prev, { type: 'assistant', text: response.response }]);
           } else if (response.type === 'revision') {
             const newSOW = response.sow;
-            setMessages(prev => [...prev, { type: 'system', text: `Changes made: ${response.changes_made || 'SOW updated'}` }]);
+            setMessages(prev => [...prev, { type: 'system', text: `Changes made: ${response.sow?.changes_made || 'SOW updated'}` }]);
             setMessages(prev => [...prev, { type: 'assistant', text: `Updated milestones:\n${newSOW.milestones.map((m, i) => `${i + 1}. ${m.name}`).join('\n')}\n\nApprove these changes?` }]);
             onRevision(newSOW);
           }
@@ -1046,7 +1074,7 @@
       };
 
       const handleApprove = () => {
-        setMessages(prev => [...prev, { type: 'system', text: '✅ SOW approved. Moving to milestones...' }]);
+        setMessages(prev => [...prev, { type: 'system', text: '✅ SOW approved. Starting market research...' }]);
         setTimeout(() => onApprove(), 1000);
       };
 
@@ -1106,16 +1134,40 @@
         .replace(/'/g, '&#39;');
     }
 
-    function formatContentHtml(str) {
-      return escapeHtml(str).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    const CITE_RE = /\[(S\d+)\]/g;
+
+    function safeHref(url) {
+      return /^https?:\/\//i.test(String(url || '')) ? url : null;
     }
 
-    function renderFormattedText(str) {
+    function formatContentHtml(str, sourceMap) {
+      return escapeHtml(str)
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(CITE_RE, (m, id) => {
+          const href = safeHref(sourceMap?.get(id)?.url);
+          return href ? `<a class="cite" href="${escapeHtml(href)}">[${id}]</a>` : m;
+        });
+    }
+
+    function renderCitations(text, sourceMap, keyPrefix) {
+      const parts = String(text).split(/(\[S\d+\])/g);
+      return parts.map((part, i) => {
+        const m = part.match(/^\[(S\d+)\]$/);
+        const href = m ? safeHref(sourceMap?.get(m[1])?.url) : null;
+        if (href) {
+          const src = sourceMap.get(m[1]);
+          return <a key={`${keyPrefix}-${i}`} className="cite" href={href} target="_blank" rel="noopener noreferrer" title={src.title}>[{m[1]}]</a>;
+        }
+        return part;
+      });
+    }
+
+    function renderFormattedText(str, sourceMap) {
       if (!str) return null;
       return String(str).split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
         part.startsWith('**') && part.endsWith('**') && part.length > 4
-          ? <strong key={i}>{part.slice(2, -2)}</strong>
-          : part
+          ? <strong key={i}>{renderCitations(part.slice(2, -2), sourceMap, i)}</strong>
+          : <React.Fragment key={i}>{renderCitations(part, sourceMap, i)}</React.Fragment>
       );
     }
 
@@ -1123,11 +1175,16 @@
       return String(text).replace(/\*\*([^*]+)\*\*/g, '$1').trim();
     }
 
+    function splitTableRow(line) {
+      return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+    }
+
     function parseReportBlocks(content) {
       const lines = String(content || '').split(/\r?\n/);
       const blocks = [];
       let paraBuf = [];
       let bulletBuf = null;
+      let tableBuf = null;
 
       function flushPara() {
         if (paraBuf.length) {
@@ -1141,10 +1198,30 @@
         }
         bulletBuf = null;
       }
+      function flushTable() {
+        if (tableBuf && tableBuf.length) {
+          const rows = tableBuf.filter(r => !r.every(c => /^:?-{2,}:?$/.test(c) || c === ''));
+          if (rows.length >= 2) {
+            const width = rows[0].length;
+            blocks.push({ type: 'table', header: rows[0].map(stripInlineBold), rows: rows.slice(1).map(r => Array.from({ length: width }, (_, i) => r[i] ?? '')) });
+          } else if (rows.length === 1) {
+            blocks.push({ type: 'p', text: rows[0].join(' — ') });
+          }
+        }
+        tableBuf = null;
+      }
 
       lines.forEach(rawLine => {
         const line = rawLine.trim();
+        if (line.startsWith('|')) {
+          flushPara(); flushBullets();
+          if (!tableBuf) tableBuf = [];
+          tableBuf.push(splitTableRow(line));
+          return;
+        }
+        flushTable();
         if (!line) { flushPara(); flushBullets(); return; }
+        if (/^\[\[[A-Z_]+\]\]$/.test(line)) { flushPara(); flushBullets(); return; }
 
         const h3Match = line.match(/^##\s+(.*)$/);
         const h4Match = line.match(/^###\s+(.*)$/);
@@ -1165,6 +1242,7 @@
           paraBuf.push(line);
         }
       });
+      flushTable();
       flushPara();
       flushBullets();
 
@@ -1173,6 +1251,74 @@
         if (fallback) blocks.push({ type: 'p', text: fallback });
       }
       return blocks;
+    }
+
+    // ---- Financial tables injected into reports from the model (never AI-written) ----
+    function fmtMoney(n) {
+      const v = Number(n) || 0;
+      const sign = v < 0 ? '-' : '';
+      const a = Math.abs(v);
+      if (a >= 1e9) return `${sign}$${(a / 1e9).toFixed(2)}B`;
+      if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(2)}M`;
+      if (a >= 1e3) return `${sign}$${Math.round(a / 1e3)}K`;
+      return `${sign}$${Math.round(a)}`;
+    }
+    const fmtPctNum = (n) => `${((Number(n) || 0) * 100).toFixed(1)}%`;
+    const fmtMillions = (n) => fmtMoney((Number(n) || 0) * 1e6);
+
+    function mdTable(header, rows) {
+      return [`| ${header.join(' | ')} |`, `| ${header.map(() => '---').join(' | ')} |`, ...rows.map(r => `| ${r.join(' | ')} |`)].join('\n');
+    }
+
+    function financialTableMarkdown(name, fs) {
+      const years = ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Year 5'];
+      const row = (label, arr, f) => [label, ...arr.map(f)];
+      const int = (v) => String(Math.round(v));
+      switch (name) {
+        case 'FIVE_YEAR_SNAPSHOT':
+          return mdTable(['', ...years], [
+            row('ARR', fs.revenue, fmtMoney),
+            row('Paying clients', fs.clients, int),
+            row('EBITDA', fs.ebitda, fmtMoney),
+          ]);
+        case 'MARKET_SIZE_TABLE':
+          return mdTable(['Market', 'Year 1', 'Year 5', 'Basis'], [
+            ['TAM — Total Addressable', fmtMillions(fs.tamM[0]), fmtMillions(fs.tamM[4]), `${fs.primaryMarketName || 'Primary market'}, compounding at the model's CAGR`],
+            ['SAM — Serviceable', fmtMillions(fs.samM[0]), fmtMillions(fs.samM[4]), 'TAM × target-segment filters + unserved-gap premium'],
+            ['SOM — Obtainable (ARR)', fmtMillions(fs.somM[0]), fmtMillions(fs.somM[4]), `${int(fs.clients[4])} clients × ${fmtMoney(fs.acv[4])} blended ACV by Year 5`],
+          ]);
+        case 'FINANCIAL_PROJECTIONS_TABLE':
+          return mdTable(['', ...years], [
+            row('Paying clients', fs.clients, int),
+            row('ARR', fs.revenue, fmtMoney),
+            row('Gross profit', fs.grossProfit, fmtMoney),
+            row('Total operating costs', fs.totalCosts, fmtMoney),
+            row('EBITDA', fs.ebitda, fmtMoney),
+            row('EBITDA margin', fs.ebitdaMargin, fmtPctNum),
+            row('Cumulative cash', fs.cumulativeCash, fmtMoney),
+            row('Headcount', fs.headcount, int),
+          ]);
+        case 'UNIT_ECONOMICS_TABLE':
+          return mdTable(['', ...years], [
+            row('Blended ACV', fs.acv, fmtMoney),
+            row('LTV : CAC', fs.ltvCac, v => `${v.toFixed(1)}x`),
+            row('CAC payback (months)', fs.cacPaybackMonths, v => v.toFixed(1)),
+          ]);
+        default:
+          return '';
+      }
+    }
+
+    function injectModelTables(report, fs) {
+      if (!report?.sections) return report;
+      return {
+        ...report,
+        sections: report.sections.map(s => ({
+          ...s,
+          content: String(s.content || '').replace(/^\s*\[\[([A-Z_]+)\]\]\s*$/gm, (m, name) =>
+            fs ? `\n${financialTableMarkdown(name, fs)}\n` : ''),
+        })),
+      };
     }
 
     function parseAndNumberReport(report) {
@@ -1195,29 +1341,55 @@
       return { title: report?.title, sections };
     }
 
-    function renderBlocksJSX(blocks) {
+    function citedSourceIds(report) {
+      const ids = new Set();
+      (report?.sections || []).forEach(s => { for (const m of String(s.content || '').matchAll(CITE_RE)) ids.add(m[1]); });
+      return ids;
+    }
+
+    function citedSources(report, research) {
+      const ids = citedSourceIds(report);
+      return (research?.sources || []).filter(s => ids.has(s.id));
+    }
+
+    function sourceMapOf(research) {
+      return new Map((research?.sources || []).map(s => [s.id, s]));
+    }
+
+    function renderBlocksJSX(blocks, sourceMap) {
       return blocks.map((b, i) => {
         if (b.type === 'h3') return <div key={i} className="block-sub-heading">{b.number} {b.text}</div>;
         if (b.type === 'h4') return <div key={i} className="block-mini-heading">{b.number}. {b.text}</div>;
         if (b.type === 'ul') return (
           <ul key={i} className="block-bullet-list">
-            {b.items.map((item, j) => <li key={j}>{renderFormattedText(item)}</li>)}
+            {b.items.map((item, j) => <li key={j}>{renderFormattedText(item, sourceMap)}</li>)}
           </ul>
         );
-        return <p key={i}>{renderFormattedText(b.text)}</p>;
+        if (b.type === 'table') return (
+          <div key={i} className="report-table-wrap">
+            <table className="report-table">
+              <thead><tr>{b.header.map((h, j) => <th key={j}>{h}</th>)}</tr></thead>
+              <tbody>{b.rows.map((r, j) => <tr key={j}>{r.map((c, k) => <td key={k}>{renderFormattedText(c, sourceMap)}</td>)}</tr>)}</tbody>
+            </table>
+          </div>
+        );
+        return <p key={i}>{renderFormattedText(b.text, sourceMap)}</p>;
       });
     }
 
-    function blocksToHtml(blocks) {
+    function blocksToHtml(blocks, sourceMap) {
       return blocks.map(b => {
         if (b.type === 'h3') return `<h3 class="pdf-sub-heading">${escapeHtml(b.number + ' ' + b.text)}</h3>`;
         if (b.type === 'h4') return `<h4 class="pdf-mini-heading">${escapeHtml(b.number + '. ' + b.text)}</h4>`;
-        if (b.type === 'ul') return `<ul class="pdf-bullet-list">${b.items.map(item => `<li>${formatContentHtml(item)}</li>`).join('')}</ul>`;
-        return `<p class="pdf-paragraph">${formatContentHtml(b.text)}</p>`;
+        if (b.type === 'ul') return `<ul class="pdf-bullet-list">${b.items.map(item => `<li>${formatContentHtml(item, sourceMap)}</li>`).join('')}</ul>`;
+        if (b.type === 'table') return `<table class="pdf-table"><thead><tr>${b.header.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead><tbody>${b.rows.map(r => `<tr>${r.map(c => `<td>${formatContentHtml(c, sourceMap)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+        return `<p class="pdf-paragraph">${formatContentHtml(b.text, sourceMap)}</p>`;
       }).join('\n');
     }
 
     const REPORT_FONT = "'Calibri', 'Carlito', 'Segoe UI', Arial, sans-serif";
+
+    const AI_DISCLAIMER = 'AI-generated analysis. Figures marked [S#] link to sources found by live web research (listed at the end); figures marked (est.) and any unsourced figures are estimates. Verify before relying on this document. Not financial, legal or investment advice.';
 
     const REPORT_STYLES = `
   @page { size: A4; margin: 0; }
@@ -1226,7 +1398,7 @@
   .pdf-page {
     width: 210mm;
     min-height: 297mm;
-    padding: 18mm 16mm;
+    padding: 18mm 16mm 24mm;
     page-break-after: always;
     position: relative;
     background: #fff;
@@ -1247,6 +1419,10 @@
   .pdf-cover-title { font-size: 16pt; color: #102A43; font-weight: 700; max-width: 480px; margin-bottom: 12px; }
   .pdf-cover-meta { font-size: 12pt; color: #555; margin-top: 4px; }
   .pdf-cover-meta.muted { color: #999; font-size: 11pt; }
+  .pdf-cover-disclaimer { position: absolute; bottom: 22mm; left: 24mm; right: 24mm; font-size: 9pt; color: #888; }
+  .pdf-cover-table { border-collapse: collapse; margin: 26px auto 0; width: 80%; text-align: left; font-size: 11pt; }
+  .pdf-cover-table td { padding: 8px 10px; border-bottom: 1px solid #e3e8ec; }
+  .pdf-cover-table td:first-child { font-weight: 700; color: #102A43; width: 38%; }
   .pdf-header {
     display: flex;
     justify-content: space-between;
@@ -1266,6 +1442,12 @@
   .pdf-bullet-list { margin: 0 0 12px 22px; padding: 0; }
   .pdf-bullet-list li { font-size: 11pt; line-height: 1.65; color: #2a2a2a; text-align: justify; margin-bottom: 7px; }
   .pdf-paragraph strong, .pdf-bullet-list strong { color: #102A43; }
+  .pdf-table { border-collapse: collapse; width: 100%; font-size: 9.5pt; margin: 6px 0 14px; }
+  .pdf-table th { background: #102A43; color: #fff; text-align: left; padding: 6px 8px; }
+  .pdf-table td { padding: 5px 8px; border-bottom: 1px solid #e3e8ec; vertical-align: top; }
+  .pdf-sources { font-size: 10pt; line-height: 1.6; padding-left: 20px; }
+  .pdf-sources a { color: #0F766E; word-break: break-all; }
+  a.cite { color: #0F766E; text-decoration: none; font-size: 0.85em; }
   .pdf-footer {
     position: absolute;
     bottom: 12mm;
@@ -1273,23 +1455,46 @@
     right: 16mm;
     display: flex;
     justify-content: space-between;
-    font-size: 11pt;
+    font-size: 10pt;
     color: #999;
     border-top: 1px solid #ddd;
     padding-top: 8px;
   }
 `;
 
-    function buildReportBodyHTML(report, milestone, intake) {
-      const title = escapeHtml(report.title || milestone.name);
-      const preparedFor = [intake?.industry, intake?.market].filter(Boolean).map(escapeHtml).join(' — ');
+    function reportDocMeta(report, milestone, businessName) {
+      const isBizPlan = report?.style === 'bizplan';
+      const company = (report?.cover || []).find(r => /^company$/i.test(r.label))?.value || businessName || '';
+      return {
+        isBizPlan,
+        company,
+        title: report?.title || milestone.name,
+        footerText: isBizPlan && company ? `${company} Business Plan · Confidential` : 'MarketEdge Strategic Analysis Report — Confidential',
+      };
+    }
+
+    function buildReportBodyHTML(report, milestone, intake, opts = {}) {
+      const meta = reportDocMeta(report, milestone, opts.businessName);
+      const sourceMap = sourceMapOf(opts.research);
+      const sources = citedSources(report, opts.research);
+      const title = escapeHtml(meta.title);
+      const preparedFor = [opts.businessName, intake?.industry, intake?.market].filter(Boolean).map(escapeHtml).join(' — ');
       const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
       const numbered = parseAndNumberReport(report);
-      const totalPages = numbered.sections.length + 1;
 
       const wordmark = `<span style="color:#102A43">Market</span><span style="color:#C9A227">Edge</span>`;
+      const coverTable = (report.cover || []).length
+        ? `<table class="pdf-cover-table">${report.cover.map(r => `<tr><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.value)}</td></tr>`).join('')}</table>`
+        : '';
 
-      const coverPage = `
+      const coverPage = meta.isBizPlan ? `
+        <section class="pdf-page pdf-cover">
+          <div class="pdf-cover-title" style="font-size:26pt;letter-spacing:1px">${escapeHtml((meta.company || 'Business').toUpperCase())}</div>
+          <div class="pdf-cover-kicker" style="font-size:15pt;letter-spacing:4px">BUSINESS PLAN</div>
+          <div class="pdf-cover-meta muted">${dateStr} · CONFIDENTIAL</div>
+          ${coverTable}
+          <div class="pdf-cover-disclaimer">${escapeHtml(AI_DISCLAIMER)}</div>
+        </section>` : `
         <section class="pdf-page pdf-cover">
           <div class="pdf-cover-wordmark">${wordmark}</div>
           <div class="pdf-cover-tagline">AI-NATIVE STRATEGY PORTAL</div>
@@ -1299,26 +1504,33 @@
           <div class="pdf-cover-rule light"></div>
           ${preparedFor ? `<div class="pdf-cover-meta">Prepared for: ${preparedFor}</div>` : ''}
           <div class="pdf-cover-meta muted">${dateStr}</div>
+          <div class="pdf-cover-disclaimer">${escapeHtml(AI_DISCLAIMER)}</div>
         </section>`;
 
-      const sectionPages = numbered.sections.map((s, i) => `
+      const pageHeader = `<header class="pdf-header"><div class="pdf-header-logo">${wordmark}</div><div class="pdf-header-title">${title}</div></header>`;
+      const sectionPages = numbered.sections.map(s => `
         <section class="pdf-page">
-          <header class="pdf-header">
-            <div class="pdf-header-logo">${wordmark}</div>
-            <div class="pdf-header-title">${title}</div>
-          </header>
-          <h2 class="pdf-section-heading">${s.sectionNumber}. ${escapeHtml(s.heading)}</h2>
-          <div class="pdf-section-body">${blocksToHtml(s.blocks)}</div>
-          <footer class="pdf-footer">
-            <span>MarketEdge Strategic Analysis Report — Confidential</span>
-            <span>Page ${i + 2} of ${totalPages}</span>
-          </footer>
+          ${pageHeader}
+          <h2 class="pdf-section-heading">${s.sectionNumber}. ${escapeHtml(meta.isBizPlan ? s.heading.toUpperCase() : s.heading)}</h2>
+          <div class="pdf-section-body">${blocksToHtml(s.blocks, sourceMap)}</div>
+          <footer class="pdf-footer"><span>${escapeHtml(meta.footerText)}</span></footer>
         </section>`).join('');
 
-      return `${coverPage}\n${sectionPages}`;
+      const sourcesPage = sources.length ? `
+        <section class="pdf-page">
+          ${pageHeader}
+          <h2 class="pdf-section-heading">Sources</h2>
+          <ol class="pdf-sources">${sources.map(src => {
+            const href = safeHref(src.url);
+            return `<li value="${escapeHtml(src.id.slice(1))}">[${escapeHtml(src.id)}] ${escapeHtml(src.title)} — ${href ? `<a href="${escapeHtml(href)}">${escapeHtml(href)}</a>` : ''}</li>`;
+          }).join('')}</ol>
+          <footer class="pdf-footer"><span>${escapeHtml(meta.footerText)}</span></footer>
+        </section>` : '';
+
+      return `${coverPage}\n${sectionPages}\n${sourcesPage}`;
     }
 
-    function buildReportHTML(report, milestone, intake) {
+    function buildReportHTML(report, milestone, intake, opts = {}) {
       const title = escapeHtml(report.title || milestone.name);
       return `<!DOCTYPE html>
 <html>
@@ -1331,7 +1543,7 @@
 </style>
 </head>
 <body>
-${buildReportBodyHTML(report, milestone, intake)}
+${buildReportBodyHTML(report, milestone, intake, opts)}
 </body>
 </html>`;
     }
@@ -1358,26 +1570,37 @@ ${buildReportBodyHTML(report, milestone, intake)}
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(11);
       doc.setTextColor(...PDF_GREY_LABEL);
-      doc.text(title, PDF_PAGE_W - PDF_MARGIN_X, PDF_MARGIN_TOP, { align: 'right' });
+      const maxTitleW = PDF_CONTENT_W - marketW - doc.getTextWidth('Edge') - 10;
+      const shortTitle = doc.splitTextToSize(title, maxTitleW)[0];
+      doc.text(shortTitle, PDF_PAGE_W - PDF_MARGIN_X, PDF_MARGIN_TOP, { align: 'right' });
 
       doc.setDrawColor(...PDF_NAVY);
       doc.setLineWidth(0.4);
       doc.line(PDF_MARGIN_X, PDF_MARGIN_TOP + 3, PDF_PAGE_W - PDF_MARGIN_X, PDF_MARGIN_TOP + 3);
     }
 
-    function pdfDrawFooter(doc, pageNum, totalPages) {
+    function pdfDrawFooter(doc, pageNum, totalPages, footerText) {
       const y = PDF_PAGE_H - PDF_MARGIN_BOTTOM + 4;
       doc.setDrawColor(220, 220, 220);
       doc.setLineWidth(0.2);
       doc.line(PDF_MARGIN_X, y - 4, PDF_PAGE_W - PDF_MARGIN_X, y - 4);
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.setTextColor(...PDF_GREY_FOOTER);
-      doc.text('MarketEdge Strategic Analysis Report — Confidential', PDF_MARGIN_X, y);
+      doc.text(footerText || 'MarketEdge Strategic Analysis Report — Confidential', PDF_MARGIN_X, y);
       doc.text(`Page ${pageNum} of ${totalPages}`, PDF_PAGE_W - PDF_MARGIN_X, y, { align: 'right' });
     }
 
-    function pdfDrawCoverPage(doc, title, preparedFor, dateStr) {
+    function pdfDrawDisclaimer(doc) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...PDF_GREY_LABEL);
+      const lines = doc.splitTextToSize(AI_DISCLAIMER, PDF_CONTENT_W - 20);
+      let y = PDF_PAGE_H - 30;
+      lines.forEach(line => { doc.text(line, PDF_PAGE_W / 2, y, { align: 'center' }); y += 4; });
+    }
+
+    function pdfDrawCoverPage(doc, title, preparedFor, dateStr, kicker = 'STRATEGIC ANALYSIS REPORT') {
       const cx = PDF_PAGE_W / 2;
       let y = 130;
       doc.setFont('helvetica', 'bold');
@@ -1405,7 +1628,7 @@ ${buildReportBodyHTML(report, milestone, intake)}
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(...PDF_TEAL);
-      doc.text('STRATEGIC ANALYSIS REPORT', cx, y, { align: 'center' });
+      doc.text(kicker, cx, y, { align: 'center' });
 
       y += 9;
       doc.setFontSize(16);
@@ -1423,12 +1646,66 @@ ${buildReportBodyHTML(report, milestone, intake)}
       doc.setFontSize(12);
       doc.setTextColor(85, 85, 85);
       if (preparedFor) {
-        doc.text(`Prepared for: ${preparedFor}`, cx, y, { align: 'center' });
-        y += 6;
+        doc.splitTextToSize(`Prepared for: ${preparedFor}`, 160).forEach(line => { doc.text(line, cx, y, { align: 'center' }); y += 6; });
       }
       doc.setFontSize(11);
       doc.setTextColor(...PDF_GREY_FOOTER);
       doc.text(dateStr, cx, y, { align: 'center' });
+      pdfDrawDisclaimer(doc);
+    }
+
+    // Business plan cover, after the sample plan: company name, "BUSINESS PLAN", then a
+    // key-metrics table of the headline facts an investor scans first.
+    function pdfDrawBizPlanCover(doc, company, coverRows, dateStr) {
+      const cx = PDF_PAGE_W / 2;
+      let y = 62;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(26);
+      doc.setTextColor(...PDF_NAVY);
+      doc.splitTextToSize((company || 'Business').toUpperCase(), 170).forEach(line => { doc.text(line, cx, y, { align: 'center' }); y += 11; });
+
+      y += 1;
+      doc.setFontSize(15);
+      doc.setTextColor(...PDF_TEAL);
+      doc.text('B U S I N E S S   P L A N', cx, y, { align: 'center' });
+
+      const offering = coverRows.find(r => /^offering$/i.test(r.label))?.value;
+      y += 8;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...PDF_GREY_LABEL);
+      if (offering) {
+        doc.splitTextToSize(offering.toUpperCase(), 160).forEach(line => { doc.text(line, cx, y, { align: 'center' }); y += 5; });
+      }
+      doc.text(`${dateStr.toUpperCase()} · CONFIDENTIAL`, cx, y, { align: 'center' });
+
+      y += 10;
+      doc.setDrawColor(...PDF_NAVY);
+      doc.setLineWidth(0.8);
+      doc.line(PDF_MARGIN_X + 10, y, PDF_PAGE_W - PDF_MARGIN_X - 10, y);
+      y += 8;
+
+      const labelX = PDF_MARGIN_X + 14;
+      const valueX = PDF_MARGIN_X + 66;
+      const valueW = PDF_PAGE_W - PDF_MARGIN_X - 14 - valueX;
+      coverRows.forEach((r, i) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(11);
+        const valueLines = doc.splitTextToSize(r.value, valueW);
+        const h = Math.max(1, valueLines.length) * 5.5 + 5;
+        if (i % 2 === 0) {
+          doc.setFillColor(245, 247, 249);
+          doc.rect(PDF_MARGIN_X + 10, y - 5, PDF_CONTENT_W - 20, h, 'F');
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...PDF_NAVY);
+        doc.text(r.label, labelX, y + 0.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...PDF_BODY_COLOR);
+        valueLines.forEach((line, li) => doc.text(line, valueX, y + 0.5 + li * 5.5));
+        y += h;
+      });
+      pdfDrawDisclaimer(doc);
     }
 
     function pdfTokenizeBoldWords(text) {
@@ -1491,6 +1768,19 @@ ${buildReportBodyHTML(report, milestone, intake)}
       });
     }
 
+    // Column widths follow each column's longest content, within sensible bounds, so a
+    // label column doesn't squeeze the numbers and vice versa.
+    function pdfTableColumnWidths(doc, block, fontSize) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(fontSize);
+      const natural = block.header.map((h, c) => {
+        const cells = [h, ...block.rows.map(r => stripInlineBold(r[c] || ''))];
+        return Math.min(70, Math.max(16, ...cells.map(t => doc.getTextWidth(String(t)) + 5)));
+      });
+      const total = natural.reduce((a, b) => a + b, 0);
+      return natural.map(w => (w / total) * PDF_CONTENT_W);
+    }
+
     function pdfRenderSection(doc, reportTitle, sectionNumber, heading, blocks) {
       pdfDrawHeader(doc, reportTitle);
       let y = PDF_MARGIN_TOP + 18;
@@ -1502,14 +1792,16 @@ ${buildReportBodyHTML(report, milestone, intake)}
           doc.addPage();
           pdfDrawHeader(doc, reportTitle);
           y = PDF_MARGIN_TOP + 18;
+          return true;
         }
+        return false;
       }
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(16);
       doc.setTextColor(...PDF_NAVY);
-      doc.text(`${sectionNumber}. ${heading}`, PDF_MARGIN_X, y);
-      y += 11;
+      doc.splitTextToSize(sectionNumber ? `${sectionNumber}. ${heading}` : heading, PDF_CONTENT_W).forEach(line => { doc.text(line, PDF_MARGIN_X, y); y += 8; });
+      y += 3;
 
       blocks.forEach(block => {
         if (block.type === 'h3') {
@@ -1538,6 +1830,47 @@ ${buildReportBodyHTML(report, milestone, intake)}
             y += 6;
           });
           y += 1.5;
+        } else if (block.type === 'table') {
+          const fontSize = 9;
+          const lineH = 4.1;
+          const pad = 1.8;
+          const widths = pdfTableColumnWidths(doc, block, fontSize);
+          const rowLines = (cells, bold) => {
+            doc.setFont('helvetica', bold ? 'bold' : 'normal');
+            doc.setFontSize(fontSize);
+            return cells.map((c, i) => doc.splitTextToSize(stripInlineBold(String(c || '')), widths[i] - pad * 2));
+          };
+          const drawRow = (lines, kind, zebra) => {
+            const h = Math.max(...lines.map(l => l.length)) * lineH + pad * 2;
+            let x = PDF_MARGIN_X;
+            if (kind === 'header') { doc.setFillColor(...PDF_NAVY); doc.rect(PDF_MARGIN_X, y, PDF_CONTENT_W, h, 'F'); }
+            else if (zebra) { doc.setFillColor(246, 248, 250); doc.rect(PDF_MARGIN_X, y, PDF_CONTENT_W, h, 'F'); }
+            doc.setFont('helvetica', kind === 'header' ? 'bold' : 'normal');
+            doc.setFontSize(fontSize);
+            doc.setTextColor(...(kind === 'header' ? [255, 255, 255] : PDF_BODY_COLOR));
+            lines.forEach((cellLines, i) => {
+              cellLines.forEach((t, li) => doc.text(t, x + pad, y + pad + 3 + li * lineH));
+              x += widths[i];
+            });
+            if (kind !== 'header') {
+              doc.setDrawColor(227, 232, 236);
+              doc.setLineWidth(0.2);
+              doc.line(PDF_MARGIN_X, y + h, PDF_MARGIN_X + PDF_CONTENT_W, y + h);
+            }
+            y += h;
+          };
+          const headerLines = rowLines(block.header, true);
+          const headerH = Math.max(...headerLines.map(l => l.length)) * lineH + pad * 2;
+          ensureSpace(headerH + 10);
+          y += 1;
+          drawRow(headerLines, 'header');
+          block.rows.forEach((r, ri) => {
+            const lines = rowLines(r, false);
+            const h = Math.max(...lines.map(l => l.length)) * lineH + pad * 2;
+            if (ensureSpace(h)) drawRow(headerLines, 'header');
+            drawRow(lines, 'body', ri % 2 === 1);
+          });
+          y += 5;
         } else if (block.type === 'ul') {
           const indent = 6;
           const bulletWidth = PDF_CONTENT_W - indent;
@@ -1573,29 +1906,145 @@ ${buildReportBodyHTML(report, milestone, intake)}
       });
     }
 
-    async function generateReportPDF(report, milestone, intake) {
-      const throwaway = document.createElement('div');
-      const doc = await html2pdf().set({ jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(throwaway).toPdf().get('pdf');
-
-      const title = report.title || milestone.name;
-      const preparedFor = [intake?.industry, intake?.market].filter(Boolean).join(' — ');
-      const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-
-      pdfDrawCoverPage(doc, title, preparedFor, dateStr);
-
-      const numbered = parseAndNumberReport(report);
-      numbered.sections.forEach((s) => {
-        doc.addPage();
-        pdfRenderSection(doc, title, s.sectionNumber, s.heading, s.blocks);
+    function pdfRenderSources(doc, headerTitle, sources) {
+      if (!sources.length) return;
+      doc.addPage();
+      pdfDrawHeader(doc, headerTitle);
+      let y = PDF_MARGIN_TOP + 18;
+      const bottomLimit = PDF_PAGE_H - PDF_MARGIN_BOTTOM - 6;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(...PDF_NAVY);
+      doc.text('Sources', PDF_MARGIN_X, y);
+      y += 7;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(...PDF_GREY_LABEL);
+      doc.splitTextToSize('Found by live web research for this engagement. Each [S#] marker in the text refers to the numbered source below.', PDF_CONTENT_W).forEach(l => { doc.text(l, PDF_MARGIN_X, y); y += 4.6; });
+      y += 4;
+      sources.forEach(src => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        const titleLines = doc.splitTextToSize(`[${src.id}] ${src.title}`, PDF_CONTENT_W);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        const href = safeHref(src.url) || '';
+        const urlLines = doc.splitTextToSize(href, PDF_CONTENT_W - 6);
+        const need = titleLines.length * 5 + urlLines.length * 4.3 + 3;
+        if (y + need > bottomLimit) {
+          doc.addPage();
+          pdfDrawHeader(doc, headerTitle);
+          y = PDF_MARGIN_TOP + 18;
+        }
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...PDF_NAVY);
+        titleLines.forEach(l => { doc.text(l, PDF_MARGIN_X, y); y += 5; });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(...PDF_TEAL);
+        urlLines.forEach(l => {
+          if (href) doc.textWithLink(l, PDF_MARGIN_X + 6, y, { url: href });
+          y += 4.3;
+        });
+        y += 3;
       });
+    }
 
+    async function newPdfDoc() {
+      const throwaway = document.createElement('div');
+      return html2pdf().set({ jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(throwaway).toPdf().get('pdf');
+    }
+
+    function pdfFinish(doc, footerText, fileName) {
       const totalPages = doc.internal.getNumberOfPages();
       for (let p = 2; p <= totalPages; p++) {
         doc.setPage(p);
-        pdfDrawFooter(doc, p, totalPages);
+        pdfDrawFooter(doc, p, totalPages, footerText);
+      }
+      doc.save(fileName);
+    }
+
+    function fileSafe(name) {
+      return String(name || 'Report').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+
+    async function generateReportPDF(report, milestone, intake, opts = {}) {
+      const doc = await newPdfDoc();
+      const meta = reportDocMeta(report, milestone, opts.businessName);
+      const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+
+      if (meta.isBizPlan) {
+        pdfDrawBizPlanCover(doc, meta.company, report.cover || [], dateStr);
+      } else {
+        const preparedFor = [opts.businessName, intake?.industry, intake?.market].filter(Boolean).join(' — ');
+        pdfDrawCoverPage(doc, meta.title, preparedFor, dateStr);
       }
 
-      doc.save(`MarketEdge-${milestone.name.replace(/\s+/g, '-')}.pdf`);
+      parseAndNumberReport(report).sections.forEach((s) => {
+        doc.addPage();
+        pdfRenderSection(doc, meta.title, s.sectionNumber, meta.isBizPlan ? s.heading.toUpperCase() : s.heading, s.blocks);
+      });
+      pdfRenderSources(doc, meta.title, citedSources(report, opts.research));
+
+      const base = meta.isBizPlan && meta.company ? `${fileSafe(meta.company)}-Business-Plan` : `MarketEdge-${fileSafe(milestone.name)}`;
+      pdfFinish(doc, meta.footerText, `${base}.pdf`);
+    }
+
+    // One combined PDF of every milestone generated so far, in engagement order, with a
+    // contents page and a single Sources appendix.
+    async function generateStrategyBookPDF(profile, catalog, financialSummary) {
+      const doc = await newPdfDoc();
+      const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+      const preparedFor = [profile.intake?.industry, profile.intake?.market].filter(Boolean).join(' — ');
+      pdfDrawCoverPage(doc, `${profile.name} — Strategy Book`, preparedFor, dateStr, 'COMPLETE STRATEGY BOOK');
+
+      doc.addPage();
+      const contentsPage = doc.internal.getNumberOfPages();
+      const contents = [];
+      const allCited = new Set();
+
+      catalog.forEach(m => {
+        const raw = profile.milestoneReports?.[m.key]?.report;
+        if (!raw) return;
+        const report = injectModelTables(raw, financialSummary);
+        citedSourceIds(report).forEach(id => allCited.add(id));
+        const sections = parseAndNumberReport(report).sections;
+        if (report.cover?.length) {
+          sections.unshift({ heading: 'At a Glance', sectionNumber: 0, blocks: [{ type: 'table', header: ['Key fact', 'Detail'], rows: report.cover.map(r => [r.label, r.value]) }] });
+        }
+        contents.push({ name: m.name, page: doc.internal.getNumberOfPages() + 1 });
+        sections.forEach((s, i) => {
+          doc.addPage();
+          const num = report.cover?.length ? i : s.sectionNumber;
+          pdfRenderSection(doc, m.name, num, s.heading, s.blocks);
+        });
+      });
+
+      pdfRenderSources(doc, `${profile.name} — Strategy Book`, (profile.research?.sources || []).filter(s => allCited.has(s.id)));
+
+      doc.setPage(contentsPage);
+      pdfDrawHeader(doc, `${profile.name} — Strategy Book`);
+      let y = PDF_MARGIN_TOP + 18;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(...PDF_NAVY);
+      doc.text('Contents', PDF_MARGIN_X, y);
+      y += 12;
+      contents.forEach((c, i) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(12);
+        doc.setTextColor(...PDF_BODY_COLOR);
+        doc.text(`${i + 1}.  ${c.name}`, PDF_MARGIN_X, y);
+        doc.setTextColor(...PDF_GREY_LABEL);
+        doc.text(String(c.page), PDF_PAGE_W - PDF_MARGIN_X, y, { align: 'right' });
+        doc.setDrawColor(230, 230, 230);
+        doc.setLineWidth(0.2);
+        doc.line(PDF_MARGIN_X, y + 2.5, PDF_PAGE_W - PDF_MARGIN_X, y + 2.5);
+        y += 10;
+      });
+
+      pdfFinish(doc, `${profile.name} Strategy Book · Confidential`, `${fileSafe(profile.name)}-Strategy-Book.pdf`);
     }
 
     const XLSX_WIDE_COLUMN_KEYS = new Set([
@@ -1603,19 +2052,45 @@ ${buildReportBodyHTML(report, milestone, intake)}
       'where_strong', 'where_weak', 'differentiation', 'marketing_angle', 'growth_plan', 'gtm_channels',
     ]);
 
-    function generateCompetitorExcel(matrix, milestone, intake) {
+    function appendSourcesSheet(wb, research, title) {
+      const sources = research?.sources || [];
+      const aoa = [
+        [title],
+        [sources.length
+          ? 'Sources found by live web research for this engagement. [S#] markers in the other sheets refer to these.'
+          : 'No live web research was run for this engagement — every figure in this workbook is an AI estimate.'],
+        [],
+        ['ID', 'Title', 'URL'],
+        ...sources.map(s => [s.id, s.title, s.url]),
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      sources.forEach((s, i) => {
+        const addr = `C${i + 5}`;
+        if (ws[addr] && safeHref(s.url)) ws[addr].l = { Target: s.url };
+      });
+      ws['!cols'] = [{ wch: 6 }, { wch: 60 }, { wch: 70 }];
+      XLSX.utils.book_append_sheet(wb, ws, 'Sources');
+    }
+
+    function generateCompetitorExcel(matrix, milestone, intake, research) {
       const columns = matrix.columns || [];
       const competitors = (matrix.competitors || []).slice(0, 15);
 
-      const headerRow1 = ['Company Name', ...columns.map(c => c.category || '')];
-      const headerRow2 = ['', ...columns.map(c => c.label)];
+      const headerRow1 = ['Company Name', ...columns.map(c => c.category || ''), 'Verification'];
+      const headerRow2 = ['', ...columns.map(c => c.label), 'Verified Source'];
       const dataRows = competitors.map(c => [
         c.name || '',
         ...columns.map(col => c.values?.[col.key] ?? ''),
+        c.source ? `[${c.source.id}] ${c.source.url}` : 'Not verified by web research — AI knowledge, check before use',
       ]);
 
       const aoa = [headerRow1, headerRow2, ...dataRows];
       const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const sourceCol = xlCol(columns.length + 1);
+      competitors.forEach((c, i) => {
+        const addr = `${sourceCol}${i + 3}`;
+        if (c.source && safeHref(c.source.url) && ws[addr]) ws[addr].l = { Target: c.source.url };
+      });
 
       const merges = [{ s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }];
       let runStart = 0;
@@ -1629,11 +2104,12 @@ ${buildReportBodyHTML(report, milestone, intake)}
         }
       }
       ws['!merges'] = merges;
-      ws['!cols'] = [{ wch: 24 }, ...columns.map(c => ({ wch: XLSX_WIDE_COLUMN_KEYS.has(c.key) ? 36 : 20 }))];
+      ws['!cols'] = [{ wch: 24 }, ...columns.map(c => ({ wch: XLSX_WIDE_COLUMN_KEYS.has(c.key) ? 36 : 20 })), { wch: 48 }];
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Competitor Comparison');
 
+      const verified = competitors.filter(c => c.source).length;
       const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
       const notesAoa = [
         ['MarketEdge — Competitor Comparison'],
@@ -1641,14 +2117,16 @@ ${buildReportBodyHTML(report, milestone, intake)}
         ['Date', dateStr],
         ['Client brief', intake?.brief || ''],
         ['Competitors included', String(competitors.length)],
+        ['Verified by web research', `${verified} of ${competitors.length}`],
         [''],
-        ['Note: figures are AI-generated from public knowledge and should be independently verified before use in a client deliverable.'],
+        [AI_DISCLAIMER],
       ];
       const notesWs = XLSX.utils.aoa_to_sheet(notesAoa);
       notesWs['!cols'] = [{ wch: 22 }, { wch: 80 }];
       XLSX.utils.book_append_sheet(wb, notesWs, 'Notes');
+      appendSourcesSheet(wb, research, 'MarketEdge — Research Sources');
 
-      XLSX.writeFile(wb, `MarketEdge-${milestone.name.replace(/\s+/g, '-')}-Comparison.xlsx`);
+      XLSX.writeFile(wb, `MarketEdge-${fileSafe(milestone.name)}-Comparison.xlsx`);
     }
 
     // ============ FINANCIAL MODEL (Excel) ============
@@ -1686,7 +2164,7 @@ ${buildReportBodyHTML(report, milestone, intake)}
       push([]);
 
       push([null, 'A. PRIMARY MARKET']);
-      refs.primarySize = push([null, 'Primary Market Size — Year 1 (USD M)', model.market?.primaryMarketSizeUSDM_Y1 ?? 0, null, null, null, null, model.market?.primaryMarketName || '']);
+      refs.primarySize = push([null, 'Primary Market Size — Year 1 (USD M)', model.market?.primaryMarketSizeUSDM_Y1 ?? 0, null, null, null, null, [model.market?.primaryMarketName, model.market?.sourceNote].filter(Boolean).join(' — ')]);
       refs.primaryCAGR = push([null, 'Primary Market CAGR', model.market?.primaryMarketCAGR ?? 0, null, null, null, null, 'Compound annual growth rate applied to the primary market size above.']);
       push([]);
 
@@ -2376,29 +2854,27 @@ ${buildReportBodyHTML(report, milestone, intake)}
       return { ws };
     }
 
-    function generateFinancialModelExcel(model, milestone, intake) {
-      const wb = XLSX.utils.book_new();
-
+    function buildFinancialWorkbook(model) {
       const assumptions = buildAssumptionsSheet(model);
-      XLSX.utils.book_append_sheet(wb, assumptions.ws, 'Assumptions');
-
       const tamSamSom = buildTamSamSomSheet(assumptions.refs);
-      XLSX.utils.book_append_sheet(wb, tamSamSom.ws, 'TAM SAM SOM');
-
       const revenueBridge = buildRevenueBridgeSheet(assumptions.refs);
-      XLSX.utils.book_append_sheet(wb, revenueBridge.ws, 'Revenue Bridge');
-
       const segmentsGeo = buildSegmentsGeoSheet(assumptions.refs, tamSamSom);
-      XLSX.utils.book_append_sheet(wb, segmentsGeo.ws, 'Segments & Geographies');
-
       const salary = buildSalaryAnalysisSheet(model);
-      XLSX.utils.book_append_sheet(wb, salary.ws, 'Salary Analysis');
-
       const expense = buildExpenseAnalysisSheet(model, salary);
-      XLSX.utils.book_append_sheet(wb, expense.ws, 'Expense Analysis');
-
       const pl = buildProfitLossSheet(model, tamSamSom, salary, expense, assumptions.refs);
-      XLSX.utils.book_append_sheet(wb, pl.ws, 'Profit & Loss');
+      return { assumptions, tamSamSom, revenueBridge, segmentsGeo, salary, expense, pl };
+    }
+
+    function generateFinancialModelExcel(model, milestone, intake, research) {
+      const wb = XLSX.utils.book_new();
+      const sheets = buildFinancialWorkbook(model);
+      XLSX.utils.book_append_sheet(wb, sheets.assumptions.ws, 'Assumptions');
+      XLSX.utils.book_append_sheet(wb, sheets.tamSamSom.ws, 'TAM SAM SOM');
+      XLSX.utils.book_append_sheet(wb, sheets.revenueBridge.ws, 'Revenue Bridge');
+      XLSX.utils.book_append_sheet(wb, sheets.segmentsGeo.ws, 'Segments & Geographies');
+      XLSX.utils.book_append_sheet(wb, sheets.salary.ws, 'Salary Analysis');
+      XLSX.utils.book_append_sheet(wb, sheets.expense.ws, 'Expense Analysis');
+      XLSX.utils.book_append_sheet(wb, sheets.pl.ws, 'Profit & Loss');
 
       const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
       const notesAoa = [
@@ -2408,225 +2884,761 @@ ${buildReportBodyHTML(report, milestone, intake)}
         ['Client brief', intake?.brief || ''],
         [''],
         ['This is a fully formula-linked model: every sheet after Assumptions computes live from Assumptions cells (or, for Salary/Expense/P&L, from each other). Change a blue input cell and the workbook recalculates.'],
-        ['Note: figures are AI-generated estimates grounded in the client brief and should be independently verified before use in a client deliverable.'],
+        [AI_DISCLAIMER],
       ];
       const notesWs = XLSX.utils.aoa_to_sheet(notesAoa);
       notesWs['!cols'] = [{ wch: 22 }, { wch: 80 }];
       XLSX.utils.book_append_sheet(wb, notesWs, 'Notes');
+      appendSourcesSheet(wb, research, 'MarketEdge — Research Sources');
 
-      XLSX.writeFile(wb, `MarketEdge-${milestone.name.replace(/\s+/g, '-')}-Model.xlsx`);
+      XLSX.writeFile(wb, `MarketEdge-${fileSafe(milestone.name)}-Model.xlsx`);
     }
 
-    // A cached report/matrix/model is only reused while its own signature still matches
-    // the current SOW and intake — either changing invalidates it, forcing a fresh
-    // generation. Each of the three cached values gets its own signature field (not one
-    // shared field) so they can never clobber or falsely validate each other, and each
-    // carries its own version tag — bump a tag here whenever that value's JSON schema
-    // changes, so cache entries written under the old schema are invalidated rather than
-    // silently fed into a renderer that no longer expects their shape.
+    // Reads the headline figures straight out of the same sheet builders the Excel export
+    // uses, so every report, the business plan and the deck quote exactly the numbers the
+    // client sees in the workbook.
+    function sheetRowValues(ws, labelPrefix, cols = YEAR_COLS) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let r = range.s.r + 1; r <= range.e.r + 1; r++) {
+        const label = ws[`B${r}`]?.v;
+        if (typeof label === 'string' && label.trim().toLowerCase().startsWith(labelPrefix.trim().toLowerCase())) {
+          return cols.map(c => Number(ws[xlAddr(c, r)]?.v) || 0);
+        }
+      }
+      return cols.map(() => 0);
+    }
+
+    function computeFinancialSummary(model) {
+      if (!model) return null;
+      try {
+        const { tamSamSom, salary, pl } = buildFinancialWorkbook(model);
+        const ts = tamSamSom.ws, p = pl.ws;
+        const ebitda = sheetRowValues(p, 'EBITDA');
+        const cumulativeCash = sheetRowValues(p, 'Cumulative Cash');
+        const breakEven = ebitda.findIndex(v => v > 0);
+        return {
+          revenue: sheetRowValues(p, 'Revenue'),
+          clients: sheetRowValues(ts, 'Paying Clients'),
+          acv: sheetRowValues(ts, 'Blended ACV'),
+          grossProfit: sheetRowValues(p, 'GROSS PROFIT'),
+          totalCosts: sheetRowValues(p, 'TOTAL OPERATING COSTS'),
+          ebitda,
+          ebitdaMargin: sheetRowValues(p, '  EBITDA Margin'),
+          cumulativeCash,
+          headcount: [4, 5, 6, 7, 8].map(c => Number(salary.ws[xlAddr(c, salary.totalRow)]?.v) || 0),
+          tamM: sheetRowValues(ts, 'TAM'),
+          samM: sheetRowValues(ts, 'SAM —'),
+          somM: sheetRowValues(ts, 'SOM —'),
+          ltvCac: sheetRowValues(p, '  LTV : CAC'),
+          cacPaybackMonths: sheetRowValues(p, '  CAC Payback'),
+          grossMargin: Number(model.grossMargin) || 0,
+          churnRate: Number(model.churnRate) || 0,
+          recommendedRaise: sheetRowValues(p, 'Recommended Raise')[0],
+          preMoneyY1: sheetRowValues(p, 'Pre-Money')[0],
+          peakFundingGap: Math.max(0, ...cumulativeCash.map(v => -v)),
+          breakEvenYear: breakEven === -1 ? null : breakEven + 1,
+          primaryMarketName: model.market?.primaryMarketName || '',
+        };
+      } catch (e) {
+        reportClientError('financial-summary', e);
+        return null;
+      }
+    }
+
+    // ============ PITCH DECK (PPTX) ============
+    // 16:9 deck in the style of the reference strategy deck: navy titles, light card rows
+    // with an accent bar, section dividers, big-number callouts and native charts/tables.
+    // Every chart and financial figure is drawn from the financial model, not from AI text.
+    const DECK = {
+      navy: '1A3C5E', body: '2E2E2E', card: 'F5F5F5', accent: 'E07B3F', teal: '0D5C63', blue: '2E6DA4',
+      muted: '8A8F98', light: 'CADCFC', white: 'FFFFFF', titleFont: 'Calibri Light', bodyFont: 'Calibri',
+    };
+    const YEAR_LABELS = ['Y1', 'Y2', 'Y3', 'Y4', 'Y5'];
+    const toM = (v) => Math.round(((Number(v) || 0) / 1e6) * 100) / 100;
+
+    function deckTitle(slide, text) {
+      slide.addText(text || '', { x: 0.5, y: 0.28, w: 9.0, h: 0.6, fontFace: DECK.titleFont, fontSize: 22, color: DECK.navy, bold: false, valign: 'middle', fit: 'shrink' });
+    }
+
+    function deckFooter(slide, footer, n, total) {
+      slide.addText(footer, { x: 0.5, y: 5.22, w: 7.5, h: 0.3, fontFace: DECK.bodyFont, fontSize: 8, color: 'AAAAAA' });
+      slide.addText(`${n} / ${total}`, { x: 8.7, y: 5.22, w: 0.8, h: 0.3, fontFace: DECK.bodyFont, fontSize: 8, color: 'AAAAAA', align: 'right' });
+    }
+
+    function deckTakeaway(slide, text) {
+      if (!text) return;
+      slide.addShape('rect', { x: 0.5, y: 4.62, w: 9.0, h: 0.48, fill: { color: 'FFF3E8' }, line: { color: 'FFF3E8' } });
+      slide.addShape('rect', { x: 0.5, y: 4.62, w: 0.06, h: 0.48, fill: { color: DECK.accent }, line: { color: DECK.accent } });
+      slide.addText(text, { x: 0.7, y: 4.62, w: 8.7, h: 0.48, fontFace: DECK.bodyFont, fontSize: 11, color: DECK.body, valign: 'middle', fit: 'shrink' });
+    }
+
+    function deckStatColumn(slide, stats, x, w) {
+      stats.forEach((st, i) => {
+        const y = 1.05 + i * 1.15;
+        slide.addShape('rect', { x, y, w, h: 1.0, fill: { color: DECK.card }, line: { color: DECK.card } });
+        slide.addText(st.value, { x: x + 0.15, y: y + 0.05, w: w - 0.3, h: 0.55, fontFace: DECK.bodyFont, fontSize: 24, bold: true, color: DECK.accent, fit: 'shrink' });
+        slide.addText(st.label, { x: x + 0.15, y: y + 0.58, w: w - 0.3, h: 0.36, fontFace: DECK.bodyFont, fontSize: 10, color: DECK.body, fit: 'shrink' });
+      });
+    }
+
+    const chartBase = {
+      catAxisLabelFontFace: 'Calibri', catAxisLabelFontSize: 10, catAxisLabelColor: '555555',
+      valAxisLabelFontFace: 'Calibri', valAxisLabelFontSize: 9, valAxisLabelColor: '777777',
+      valGridLine: { color: 'E6E6E6', size: 0.5 }, dataLabelFontFace: 'Calibri', dataLabelFontSize: 9,
+      legendFontFace: 'Calibri', legendFontSize: 10,
+    };
+
+    function renderDeckChart(slide, sl, fs) {
+      if (!fs) {
+        slide.addText('Financial model not available — generate the Financial Analysis milestone first.', { x: 0.5, y: 2.2, w: 9, h: 0.6, fontSize: 14, color: DECK.muted, align: 'center' });
+        return;
+      }
+      const area = { x: 0.5, y: 1.0, w: 6.2, h: 3.5 };
+      if (sl.chart === 'arr') {
+        slide.addChart('bar', [{ name: 'ARR ($M)', labels: YEAR_LABELS, values: fs.revenue.map(toM) }],
+          { ...area, ...chartBase, barDir: 'col', chartColors: [DECK.accent], showValue: true, dataLabelFormatCode: '$0.0"M"', valAxisLabelFormatCode: '$0.0"M"', showLegend: false });
+        const growth = fs.revenue[0] > 0 ? Math.pow(fs.revenue[4] / fs.revenue[0], 1 / 4) - 1 : null;
+        deckStatColumn(slide, [
+          { value: fmtMoney(fs.revenue[4]), label: 'Year 5 ARR' },
+          { value: String(Math.round(fs.clients[4])), label: 'Paying clients by Year 5' },
+          { value: growth != null ? `${Math.round(growth * 100)}%` : '—', label: 'ARR CAGR, Year 1 → Year 5' },
+        ], 7.0, 2.5);
+      } else if (sl.chart === 'pnl') {
+        slide.addChart('bar', [
+          { name: 'Revenue', labels: YEAR_LABELS, values: fs.revenue.map(toM) },
+          { name: 'Operating costs', labels: YEAR_LABELS, values: fs.totalCosts.map(toM) },
+          { name: 'EBITDA', labels: YEAR_LABELS, values: fs.ebitda.map(toM) },
+        ], { ...area, ...chartBase, barDir: 'col', barGrouping: 'clustered', chartColors: [DECK.navy, 'B8C2CC', DECK.accent], valAxisLabelFormatCode: '$0.0"M"', showLegend: true, legendPos: 'b' });
+        deckStatColumn(slide, [
+          { value: fs.breakEvenYear ? `Year ${fs.breakEvenYear}` : 'Beyond Y5', label: 'EBITDA break-even' },
+          { value: fmtPctNum(fs.ebitdaMargin[4]), label: 'Year 5 EBITDA margin' },
+          { value: fmtPctNum(fs.grossMargin), label: 'Gross margin' },
+        ], 7.0, 2.5);
+      } else if (sl.chart === 'cash') {
+        slide.addChart('line', [{ name: 'Cumulative cash ($M)', labels: YEAR_LABELS, values: fs.cumulativeCash.map(toM) }],
+          { ...area, ...chartBase, chartColors: [DECK.teal], lineSize: 3, lineDataSymbol: 'circle', lineDataSymbolSize: 8, showValue: true, dataLabelFormatCode: '$0.0"M"', valAxisLabelFormatCode: '$0.0"M"', showLegend: false });
+        deckStatColumn(slide, [
+          { value: fmtMoney(fs.peakFundingGap), label: 'Peak funding gap' },
+          { value: fmtMoney(fs.recommendedRaise), label: 'Recommended raise' },
+          { value: fmtMoney(fs.cumulativeCash[4]), label: 'Cash position, end of Year 5' },
+        ], 7.0, 2.5);
+      } else if (sl.chart === 'headcount') {
+        slide.addChart('bar', [{ name: 'Headcount', labels: YEAR_LABELS, values: fs.headcount }],
+          { ...area, ...chartBase, barDir: 'col', chartColors: [DECK.blue], showValue: true, showLegend: false });
+        deckStatColumn(slide, [
+          { value: String(Math.round(fs.headcount[0])), label: 'Team in Year 1' },
+          { value: String(Math.round(fs.headcount[4])), label: 'Team in Year 5' },
+          { value: fs.headcount[4] ? fmtMoney(fs.revenue[4] / fs.headcount[4]) : '—', label: 'ARR per employee, Year 5' },
+        ], 7.0, 2.5);
+      }
+      deckTakeaway(slide, sl.takeaway);
+    }
+
+    function renderDeckTable(slide, columns, rows, y = 1.05, h) {
+      if (!columns?.length) return;
+      const colW = 9.0 / columns.length;
+      const header = columns.map(c => ({ text: c, options: { bold: true, color: DECK.white, fill: { color: DECK.navy } } }));
+      const body = rows.map((r, i) => r.map(c => ({ text: String(c ?? ''), options: { fill: { color: i % 2 ? 'FFFFFF' : DECK.card } } })));
+      slide.addTable([header, ...body], {
+        x: 0.5, y, w: 9.0, colW: Array(columns.length).fill(colW), h,
+        fontFace: DECK.bodyFont, fontSize: 10, color: DECK.body, valign: 'middle',
+        border: { type: 'solid', pt: 0.5, color: 'E2E2E2' }, margin: 0.06, autoPage: false,
+      });
+    }
+
+    async function generatePitchDeckPptx(deck, fs, research, businessName) {
+      const pptx = new PptxGenJS();
+      pptx.layout = 'LAYOUT_16x9';
+      const company = deck.companyName || businessName || 'Company';
+      pptx.title = `${company} — Investor Presentation`;
+      pptx.company = company;
+      const slides = [...deck.slides];
+
+      const deckText = JSON.stringify(slides);
+      const cited = (research?.sources || []).filter(s => deckText.includes(`[${s.id}]`));
+      if (cited.length) slides.push({ type: 'sources' });
+
+      const total = slides.length;
+      const footer = `${company.toUpperCase()}  |  ${deck.tagline || 'Investor Presentation'}  |  Confidential`;
+      const dateStr = new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+      slides.forEach((sl, idx) => {
+        const n = idx + 1;
+        const slide = pptx.addSlide();
+        const dark = sl.type === 'title' || sl.type === 'section' || sl.type === 'closing';
+        slide.background = { color: dark ? DECK.navy : DECK.white };
+
+        switch (sl.type) {
+          case 'title':
+            slide.addShape('rect', { x: 0.6, y: 1.55, w: 0.1, h: 1.6, fill: { color: DECK.accent }, line: { color: DECK.accent } });
+            slide.addText(sl.title || company, { x: 0.9, y: 1.45, w: 8.5, h: 0.95, fontFace: DECK.titleFont, fontSize: 40, bold: true, color: DECK.white, fit: 'shrink' });
+            slide.addText(sl.subtitle || deck.tagline || '', { x: 0.9, y: 2.4, w: 8.5, h: 0.8, fontFace: DECK.bodyFont, fontSize: 18, color: DECK.light, fit: 'shrink' });
+            slide.addText(`Confidential  |  ${dateStr}`, { x: 0.9, y: 4.6, w: 8, h: 0.35, fontFace: DECK.bodyFont, fontSize: 11, color: 'AAB7C4' });
+            return;
+          case 'section':
+            slide.addText(sl.number || String(n).padStart(2, '0'), { x: 0.9, y: 1.4, w: 3, h: 1.2, fontFace: DECK.titleFont, fontSize: 60, bold: true, color: DECK.accent });
+            slide.addText(sl.title, { x: 0.9, y: 2.6, w: 8.2, h: 0.9, fontFace: DECK.titleFont, fontSize: 32, color: DECK.white, fit: 'shrink' });
+            slide.addText(`${n} / ${total}`, { x: 8.7, y: 5.22, w: 0.8, h: 0.3, fontSize: 8, color: '8FA3B8', align: 'right' });
+            return;
+          case 'closing':
+            slide.addText(sl.title || 'Next Steps', { x: 0.9, y: 0.6, w: 8.2, h: 0.8, fontFace: DECK.titleFont, fontSize: 32, color: DECK.white });
+            slide.addText((sl.points || []).map((p, i) => ({ text: `${i + 1}.  ${p}`, options: { breakLine: true } })), {
+              x: 0.9, y: 1.6, w: 8.2, h: 3.2, fontFace: DECK.bodyFont, fontSize: 15, color: DECK.white, paraSpaceAfter: 10, valign: 'top', fit: 'shrink',
+            });
+            slide.addText(`${company.toUpperCase()}  |  Confidential`, { x: 0.9, y: 5.15, w: 6, h: 0.3, fontSize: 9, color: '8FA3B8' });
+            return;
+          case 'cards': {
+            deckTitle(slide, sl.title);
+            const cards = sl.cards || [];
+            const gap = 0.12;
+            const h = Math.min(0.95, (4.1 - gap * (cards.length - 1)) / Math.max(1, cards.length));
+            cards.forEach((c, i) => {
+              const y = 1.0 + i * (h + gap);
+              slide.addShape('rect', { x: 0.5, y, w: 9.0, h, fill: { color: DECK.card }, line: { color: DECK.card } });
+              slide.addShape('rect', { x: 0.5, y, w: 0.06, h, fill: { color: DECK.accent }, line: { color: DECK.accent } });
+              slide.addText(c.label, { x: 0.75, y, w: 2.0, h, fontFace: DECK.bodyFont, fontSize: 13, bold: true, color: DECK.navy, valign: 'middle', fit: 'shrink' });
+              slide.addText(c.text, { x: 2.75, y, w: 6.6, h, fontFace: DECK.bodyFont, fontSize: 11.5, color: DECK.body, valign: 'middle', fit: 'shrink' });
+            });
+            break;
+          }
+          case 'bigNumbers': {
+            deckTitle(slide, sl.title);
+            const stats = sl.stats || [];
+            const w = (9.0 - 0.25 * (stats.length - 1)) / Math.max(1, stats.length);
+            stats.forEach((st, i) => {
+              const x = 0.5 + i * (w + 0.25);
+              slide.addShape('rect', { x, y: 1.2, w, h: 2.4, fill: { color: DECK.card }, line: { color: DECK.card } });
+              slide.addShape('rect', { x, y: 1.2, w, h: 0.06, fill: { color: DECK.accent }, line: { color: DECK.accent } });
+              slide.addText(st.value, { x, y: 1.45, w, h: 1.0, fontFace: DECK.bodyFont, fontSize: 40, bold: true, color: DECK.accent, align: 'center', fit: 'shrink' });
+              slide.addText(st.label, { x: x + 0.15, y: 2.5, w: w - 0.3, h: 1.0, fontFace: DECK.bodyFont, fontSize: 12, color: DECK.body, align: 'center', valign: 'top', fit: 'shrink' });
+            });
+            deckTakeaway(slide, sl.note);
+            break;
+          }
+          case 'bullets':
+            deckTitle(slide, sl.title);
+            slide.addText((sl.bullets || []).map(b => ({ text: b, options: { bullet: { code: '25A0' }, breakLine: true } })), {
+              x: 0.5, y: 1.05, w: sl.callout ? 6.1 : 9.0, h: 3.9, fontFace: DECK.bodyFont, fontSize: 14, color: DECK.body, paraSpaceAfter: 9, valign: 'top', fit: 'shrink',
+            });
+            if (sl.callout) {
+              slide.addShape('rect', { x: 6.85, y: 1.1, w: 2.65, h: 3.7, fill: { color: DECK.navy }, line: { color: DECK.navy } });
+              slide.addText(sl.callout, { x: 7.0, y: 1.2, w: 2.35, h: 3.5, fontFace: DECK.bodyFont, fontSize: 15, bold: true, color: DECK.white, valign: 'middle', fit: 'shrink' });
+            }
+            break;
+          case 'table':
+            deckTitle(slide, sl.title);
+            renderDeckTable(slide, sl.columns, sl.rows || []);
+            break;
+          case 'chart':
+            deckTitle(slide, sl.title);
+            renderDeckChart(slide, sl, fs);
+            break;
+          case 'marketSize': {
+            deckTitle(slide, sl.title);
+            if (!fs) { renderDeckChart(slide, sl, null); break; }
+            const tiers = [
+              { k: 'TAM', label: 'Total addressable market', y1: fs.tamM[0], y5: fs.tamM[4], color: DECK.navy, w: 9.0 },
+              { k: 'SAM', label: 'Serviceable addressable market', y1: fs.samM[0], y5: fs.samM[4], color: DECK.blue, w: 7.2 },
+              { k: 'SOM', label: 'Obtainable — our ARR', y1: fs.somM[0], y5: fs.somM[4], color: DECK.accent, w: 5.4 },
+            ];
+            tiers.forEach((t, i) => {
+              const y = 1.05 + i * 1.12;
+              const x = 0.5 + (9.0 - t.w) / 2;
+              slide.addShape('rect', { x, y, w: t.w, h: 0.98, fill: { color: t.color }, line: { color: t.color } });
+              slide.addText([
+                { text: `${t.k}  `, options: { bold: true, fontSize: 18 } },
+                { text: `${fmtMillions(t.y1)} → ${fmtMillions(t.y5)}`, options: { fontSize: 18, breakLine: true } },
+                { text: `${t.label}, Year 1 → Year 5`, options: { fontSize: 10.5 } },
+              ], { x, y, w: t.w, h: 0.98, fontFace: DECK.bodyFont, color: DECK.white, align: 'center', valign: 'middle' });
+            });
+            deckTakeaway(slide, sl.takeaway);
+            break;
+          }
+          case 'unitEconomics': {
+            deckTitle(slide, sl.title);
+            if (!fs) { renderDeckChart(slide, sl, null); break; }
+            const stats = [
+              { value: `${fs.ltvCac[0].toFixed(1)}x`, label: 'LTV : CAC at launch' },
+              { value: `${fs.ltvCac[4].toFixed(1)}x`, label: 'LTV : CAC by Year 5' },
+              { value: `${fs.cacPaybackMonths[0].toFixed(0)} mo`, label: 'CAC payback, Year 1' },
+              { value: fmtPctNum(fs.grossMargin), label: 'Gross margin' },
+            ];
+            const w = (9.0 - 0.25 * 3) / 4;
+            stats.forEach((st, i) => {
+              const x = 0.5 + i * (w + 0.25);
+              slide.addShape('rect', { x, y: 1.0, w, h: 1.25, fill: { color: DECK.card }, line: { color: DECK.card } });
+              slide.addText(st.value, { x, y: 1.05, w, h: 0.7, fontSize: 28, bold: true, color: DECK.accent, align: 'center', fontFace: DECK.bodyFont });
+              slide.addText(st.label, { x, y: 1.72, w, h: 0.45, fontSize: 10.5, color: DECK.body, align: 'center', fontFace: DECK.bodyFont });
+            });
+            renderDeckTable(slide, ['', ...YEAR_LABELS], [
+              ['Blended ACV', ...fs.acv.map(fmtMoney)],
+              ['LTV : CAC', ...fs.ltvCac.map(v => `${v.toFixed(1)}x`)],
+              ['CAC payback (months)', ...fs.cacPaybackMonths.map(v => v.toFixed(1))],
+            ], 2.45);
+            deckTakeaway(slide, sl.takeaway);
+            break;
+          }
+          case 'ask': {
+            deckTitle(slide, sl.title);
+            slide.addShape('rect', { x: 0.5, y: 1.0, w: 3.0, h: 1.5, fill: { color: DECK.navy }, line: { color: DECK.navy } });
+            slide.addText([
+              { text: 'RAISING', options: { fontSize: 11, color: DECK.light, breakLine: true } },
+              { text: fs ? fmtMoney(fs.recommendedRaise) : 'See model', options: { fontSize: 34, bold: true, color: DECK.white } },
+            ], { x: 0.65, y: 1.05, w: 2.7, h: 1.4, fontFace: DECK.bodyFont, valign: 'middle' });
+            if (fs) slide.addText(`At ${fmtMoney(fs.preMoneyY1)} pre-money · covers a ${fmtMoney(fs.peakFundingGap)} peak funding gap`, { x: 0.5, y: 2.55, w: 3.0, h: 0.6, fontSize: 10, color: DECK.muted, fontFace: DECK.bodyFont, fit: 'shrink' });
+            const uses = (sl.useOfFunds || []).filter(u => u.pct > 0);
+            if (uses.length) {
+              slide.addChart('doughnut', [{ name: 'Use of funds', labels: uses.map(u => u.label), values: uses.map(u => u.pct) }], {
+                x: 3.6, y: 0.95, w: 3.0, h: 3.6, holeSize: 55, showPercent: true, showLegend: true, legendPos: 'b', legendFontSize: 9, dataLabelFontSize: 9,
+                chartColors: [DECK.navy, DECK.accent, DECK.blue, DECK.teal, 'B8C2CC', 'E8B07A'], dataLabelColor: DECK.white,
+              });
+            }
+            slide.addText('What this raise achieves', { x: 6.8, y: 1.0, w: 2.7, h: 0.4, fontSize: 13, bold: true, color: DECK.navy, fontFace: DECK.bodyFont });
+            slide.addText((sl.milestones || []).map(m => ({ text: m, options: { bullet: { code: '25A0' }, breakLine: true } })), {
+              x: 6.8, y: 1.4, w: 2.7, h: 3.1, fontSize: 11.5, color: DECK.body, fontFace: DECK.bodyFont, paraSpaceAfter: 6, valign: 'top', fit: 'shrink',
+            });
+            break;
+          }
+          case 'sources':
+            deckTitle(slide, 'Sources');
+            slide.addText(cited.slice(0, 14).map(s => ({ text: `[${s.id}] ${s.title} — ${s.url}`, options: { breakLine: true, hyperlink: safeHref(s.url) ? { url: s.url } : undefined } })), {
+              x: 0.5, y: 1.0, w: 9.0, h: 4.0, fontSize: 9, color: DECK.body, fontFace: DECK.bodyFont, paraSpaceAfter: 3, valign: 'top', fit: 'shrink',
+            });
+            break;
+          default:
+            deckTitle(slide, sl.title);
+        }
+        deckFooter(slide, footer, n, total);
+      });
+
+      await pptx.writeFile({ fileName: `${fileSafe(company)}-Pitch-Deck.pptx` });
+    }
+
     function computeReportSignature(sow, intake) {
       return JSON.stringify({ sow, intake });
     }
     const REPORT_CACHE_VERSION = 'report-v1';
     const MATRIX_CACHE_VERSION = 'matrix-v1';
     const MODEL_CACHE_VERSION = 'model-v2'; // v2: full formula-linked assumptions schema
+    const DECK_CACHE_VERSION = 'deck-v1';
+    // The Business Plan moved to the investor-plan format (cover sheet + 13 sections), so
+    // plans cached in the old generic format are regenerated.
+    const reportVersionFor = (key) => (key === 'bizplan' ? 'report-v2-bizplan' : REPORT_CACHE_VERSION);
 
-    function MilestoneStep({ milestone, sow, intake, cachedEntry, onCacheUpdate, onNext, onPrev, isFirst, isLast }) {
-      const baseSignature = computeReportSignature(sow, intake);
-      const reportSignature = `${baseSignature}|${REPORT_CACHE_VERSION}`;
-      const matrixSignature = `${baseSignature}|${MATRIX_CACHE_VERSION}`;
-      const modelSignature = `${baseSignature}|${MODEL_CACHE_VERSION}`;
-      const isCompetitorMilestone = milestone.key === 'competitor';
-      const isFinancialMilestone = milestone.key === 'financial';
-      const cacheHasReport = !!(cachedEntry && cachedEntry.reportSignature === reportSignature && cachedEntry.report);
-      const cacheHasMatrix = !!(cachedEntry && cachedEntry.matrixSignature === matrixSignature && cachedEntry.matrix);
-      const cacheHasModel = !!(cachedEntry && cachedEntry.modelSignature === modelSignature && cachedEntry.financialModel);
+    // Milestones whose content is built on the 5-year financial model.
+    const MODEL_DEPENDENT = new Set(['financial', 'bizplan', 'pitch', 'execbrief']);
 
-      const [report, setReport] = useState(() => cacheHasReport ? cachedEntry.report : null);
-      const [loading, setLoading] = useState(() => !cacheHasReport);
-      const [error, setError] = useState(null);
+    function signaturesFor(sow, intake, key) {
+      const base = computeReportSignature(sow, intake);
+      return {
+        report: `${base}|${reportVersionFor(key)}`,
+        matrix: `${base}|${MATRIX_CACHE_VERSION}`,
+        model: `${base}|${MODEL_CACHE_VERSION}`,
+        deck: `${base}|${DECK_CACHE_VERSION}`,
+      };
+    }
 
-      const [matrix, setMatrix] = useState(() => cacheHasMatrix ? cachedEntry.matrix : null);
-      const [matrixLoading, setMatrixLoading] = useState(() => isCompetitorMilestone && !cacheHasMatrix);
-      const [matrixError, setMatrixError] = useState(null);
+    function validModel(profile) {
+      const entry = profile?.milestoneReports?.financial;
+      if (!entry?.financialModel) return null;
+      return entry.modelSignature === signaturesFor(profile.sow, profile.intake, 'financial').model ? entry.financialModel : null;
+    }
 
-      const [financialModel, setFinancialModel] = useState(() => cacheHasModel ? cachedEntry.financialModel : null);
-      const [modelLoading, setModelLoading] = useState(() => isFinancialMilestone && !cacheHasModel);
-      const [modelError, setModelError] = useState(null);
+    function executiveSummaryOf(report) {
+      const sections = report?.sections || [];
+      return (sections.find(s => s.heading === 'Executive Summary') || sections[0])?.content || '';
+    }
 
+    // Earlier milestones, in engagement order, reduced to their executive summaries — the
+    // context every later milestone is written on top of.
+    function priorContextFor(profile, key) {
+      const idx = MILESTONE_CATALOG.findIndex(m => m.key === key);
+      return MILESTONE_CATALOG.slice(0, idx)
+        .map(m => ({ name: m.name, report: profile.milestoneReports?.[m.key]?.report }))
+        .filter(x => x.report)
+        .map(x => ({ name: x.name, summary: executiveSummaryOf(x.report) }));
+    }
+
+    // The most recent time any input this milestone builds on changed.
+    function upstreamStampFor(profile, key) {
+      const idx = MILESTONE_CATALOG.findIndex(m => m.key === key);
+      const stamps = [profile.research?.generatedAt || ''];
+      MILESTONE_CATALOG.slice(0, idx).forEach(m => {
+        const at = profile.milestoneReports?.[m.key]?.reportGeneratedAt;
+        if (at) stamps.push(at);
+      });
+      if (MODEL_DEPENDENT.has(key) && key !== 'financial') {
+        const at = profile.milestoneReports?.financial?.modelGeneratedAt;
+        if (at) stamps.push(at);
+      }
+      return stamps.sort().pop() || '';
+    }
+
+    function fmtUSDPrecise(v) {
+      return `$${(Number(v) || 0).toFixed(2)}`;
+    }
+
+    function totalUsageUSD(profile) {
+      return (profile?.usageLog || []).reduce((acc, e) => acc + (Number(e.usd) || 0), 0);
+    }
+
+    function useElapsedSeconds(active) {
+      const [start, setStart] = useState(null);
+      const [, tick] = useState(0);
       useEffect(() => {
-        if (cacheHasReport) {
-          console.log("🎯 MilestoneStep using cached report for:", milestone.key);
+        if (!active) { setStart(null); return; }
+        setStart(Date.now());
+        const id = setInterval(() => tick(t => t + 1), 1000);
+        return () => clearInterval(id);
+      }, [active]);
+      return start ? Math.floor((Date.now() - start) / 1000) : 0;
+    }
+
+    function formatElapsed(sec) {
+      return sec >= 60 ? `${Math.floor(sec / 60)}m ${String(sec % 60).padStart(2, '0')}s` : `${sec}s`;
+    }
+
+    function SourcesPanel({ sources, title = 'Sources cited in this report' }) {
+      if (!sources?.length) return null;
+      return (
+        <details className="sources-panel">
+          <summary>{title} ({sources.length})</summary>
+          <ol>
+            {sources.map(src => (
+              <li key={src.id} value={Number(src.id.slice(1))}>
+                [{src.id}] {safeHref(src.url) ? <a href={src.url} target="_blank" rel="noopener noreferrer">{src.title}</a> : src.title}
+              </li>
+            ))}
+          </ol>
+        </details>
+      );
+    }
+
+    // ============ RESEARCH STEP ============
+    function ResearchStep({ profile, onResearch, onSkip, onUsage, onContinue }) {
+      const [state, setState] = useState(profile.research ? 'done' : 'idle');
+      const [error, setError] = useState(null);
+      const elapsed = useElapsedSeconds(state === 'loading');
+      const research = profile.research;
+
+      const run = async () => {
+        setState('loading');
+        setError(null);
+        const res = await fetchResearch({ sow: profile.sow, intake: profile.intake, businessName: profile.name });
+        const usage = res.data?.usage || res.usage;
+        if (usage) onUsage('research', null, usage);
+        if (res.error) {
+          setError(res.error);
+          setState('error');
           return;
         }
-        let cancelled = false;
-        console.log("🎯 MilestoneStep generating report for:", milestone.key);
-        setLoading(true);
-        setError(null);
-        setReport(null);
-        generateMilestoneReport(milestone.key, milestone.name, sow, intake, (result) => {
-          if (cancelled) return;
-          setLoading(false);
-          if (result.error) {
-            console.error("Report error:", result.error);
-            setError(result.error);
-            setReport(null);
-          } else {
-            console.log("Report loaded successfully");
-            setReport(result);
-            onCacheUpdate(milestone.key, { report: result, reportSignature, generatedAt: new Date().toISOString() });
-          }
-        });
-        return () => { cancelled = true; };
-      }, [milestone.key, sow, intake]);
-
-      useEffect(() => {
-        if (!isCompetitorMilestone || cacheHasMatrix) return;
-        let cancelled = false;
-        setMatrixLoading(true);
-        setMatrixError(null);
-        setMatrix(null);
-        generateCompetitorMatrix(sow, intake, (result) => {
-          if (cancelled) return;
-          setMatrixLoading(false);
-          if (result.error) {
-            console.error("Competitor matrix error:", result.error);
-            setMatrixError(result.error);
-          } else {
-            setMatrix(result);
-            onCacheUpdate(milestone.key, { matrix: result, matrixSignature, generatedAt: new Date().toISOString() });
-          }
-        });
-        return () => { cancelled = true; };
-      }, [isCompetitorMilestone, sow, intake]);
-
-      useEffect(() => {
-        if (!isFinancialMilestone || cacheHasModel) return;
-        let cancelled = false;
-        setModelLoading(true);
-        setModelError(null);
-        setFinancialModel(null);
-        generateFinancialModel(sow, intake, (result) => {
-          if (cancelled) return;
-          setModelLoading(false);
-          if (result.error) {
-            console.error("Financial model error:", result.error);
-            setModelError(result.error);
-          } else {
-            setFinancialModel(result);
-            onCacheUpdate(milestone.key, { financialModel: result, modelSignature, generatedAt: new Date().toISOString() });
-          }
-        });
-        return () => { cancelled = true; };
-      }, [isFinancialMilestone, sow, intake]);
-
-      const downloadPDF = () => {
-        if (!report) return;
-        generateReportPDF(report, milestone, intake);
+        onResearch(res.data.research);
+        setState('done');
       };
 
+      useEffect(() => {
+        if (!profile.research) run();
+      }, []);
+
+      const sourceMap = sourceMapOf(research);
+
+      return (
+        <div className="view">
+          <h2>Market Research</h2>
+          <p style={{ color: '#555', marginBottom: '12px' }}>
+            Before any analysis, MarketEdge searches the web for market sizing, competitors and industry benchmarks. Every report then cites these sources as [S1], [S2]… and marks anything it couldn't source as an estimate.
+          </p>
+
+          {state === 'loading' && (
+            <div className="card">
+              <div className="progress-line"><div className="spinner"></div> Searching the web and checking sources… <span className="muted">{formatElapsed(elapsed)} · usually 1–3 minutes</span></div>
+            </div>
+          )}
+
+          {state === 'error' && (
+            <div className="card">
+              <div className="error">Research failed: {error}</div>
+              <button onClick={run}>🔄 Try Again</button>
+              <button className="secondary" onClick={onSkip}>Continue Without Research</button>
+              <p style={{ fontSize: '13px', color: '#666', marginTop: '8px' }}>Without research, every market figure in your reports will be marked as an AI estimate. You can run research later from any milestone.</p>
+            </div>
+          )}
+
+          {state === 'done' && research && (
+            <>
+              <div className="research-stats">
+                <div className="research-stat"><div className="value">{research.sources.length}</div><div className="label">Verified sources</div></div>
+                <div className="research-stat"><div className="value">{research.facts.length}</div><div className="label">Sourced facts</div></div>
+                <div className="research-stat"><div className="value">{research.competitors.length}</div><div className="label">Verified competitors</div></div>
+                <div className="research-stat"><div className="value">{research.searchCount || 0}</div><div className="label">Web searches run</div></div>
+              </div>
+
+              {research.marketSummary && <div className="report-highlight"><h4>What the research shows</h4><p>{research.marketSummary}</p></div>}
+
+              {research.facts.length > 0 && (
+                <div className="card">
+                  <h3 style={{ marginBottom: '8px' }}>Sourced facts</h3>
+                  <ul className="fact-list">
+                    {research.facts.map((f, i) => <li key={i}>{renderFormattedText(`${f.claim} [${f.sourceId}]`, sourceMap)}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {research.competitors.length > 0 && (
+                <div className="card">
+                  <h3 style={{ marginBottom: '8px' }}>Verified competitors</h3>
+                  <ul className="fact-list">
+                    {research.competitors.map((c, i) => <li key={i}><strong>{c.name}</strong>{c.website ? ` (${c.website})` : ''} — {renderFormattedText(`${c.description} Pricing: ${c.pricing}. [${c.sourceId}]`, sourceMap)}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {research.gaps?.length > 0 && (
+                <div className="notice"><strong>Couldn't verify:</strong> {research.gaps.join(' · ')}. Reports will mark related figures as estimates.</div>
+              )}
+
+              {research.droppedUnverified > 0 && (
+                <p style={{ fontSize: '13px', color: '#666' }}>{research.droppedUnverified} item(s) were dropped because their source couldn't be matched to an actual search result.</p>
+              )}
+
+              <SourcesPanel sources={research.sources} title="All sources" />
+
+              <div style={{ marginTop: '24px' }}>
+                <button onClick={onContinue}>Continue to Milestones →</button>
+                <button className="secondary" onClick={run}>🔄 Re-run Research</button>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    // Generations keep running when the user navigates to another milestone; this stops a
+    // remount from starting a duplicate request for work already in progress.
+    const IN_FLIGHT = new Map();
+
+    const PROGRESS_TEXT = {
+      model: 'Building the 5-year financial model…',
+      report: 'Writing the report… (usually 2–4 minutes)',
+      matrix: 'Building the competitor comparison…',
+      deck: 'Drafting the pitch deck…',
+    };
+
+    function MilestoneStep({ milestone, profile, onCacheUpdate, onUsage, onRunResearch, onNext, onPrev, isFirst, isLast }) {
+      const { sow, intake } = profile;
+      const key = milestone.key;
+      const sig = signaturesFor(sow, intake, key);
+      const entry = profile.milestoneReports?.[key] || {};
+      const isCompetitor = key === 'competitor';
+      const isFinancial = key === 'financial';
+      const isPitch = key === 'pitch';
+      const needsModel = MODEL_DEPENDENT.has(key);
+
+      const report = entry.reportSignature === sig.report ? entry.report : null;
+      const matrix = entry.matrixSignature === sig.matrix ? entry.matrix : null;
+      const deck = entry.deckSignature === sig.deck ? entry.deck : null;
+      const model = needsModel ? validModel(profile) : null;
+      const financialSummary = useMemo(() => (model ? computeFinancialSummary(model) : null), [model]);
+
+      const [status, setStatus] = useState({});
+      const [errors, setErrors] = useState({});
+      const [regenNotes, setRegenNotes] = useState('');
+      const [showRegenBox, setShowRegenBox] = useState(false);
+      const [deckBuilding, setDeckBuilding] = useState(false);
+      const profileRef = useRef(profile);
+      profileRef.current = profile;
+
+      const busy = Object.values(status).some(v => v === 'loading');
+      const elapsed = useElapsedSeconds(busy);
+      const flightKey = `${profile.id}:${key}`;
+
+      const setPart = (part, value, err) => {
+        setStatus(prev => ({ ...prev, [part]: value }));
+        setErrors(prev => ({ ...prev, [part]: err || null }));
+      };
+
+      const missingSomething = () => !report || (isCompetitor && !matrix) || (isPitch && !deck) || (needsModel && !model);
+
+      async function runGeneration({ force = false, notes } = {}) {
+        const p = profileRef.current;
+        const now = () => new Date().toISOString();
+        const base = { sow, intake, businessName: p.name, research: p.research || null, notes };
+        const priorContext = priorContextFor(p, key);
+
+        let contextStamp = upstreamStampFor(p, key);
+        let currentModel = needsModel ? validModel(p) : null;
+        if (needsModel && (!currentModel || (force && isFinancial))) {
+          setPart('model', 'loading');
+          const res = await fetchFinancialModel({ ...base, notes: isFinancial ? notes : undefined, priorContext });
+          const usage = res.data?.usage || res.usage;
+          if (usage) onUsage('model', 'financial', usage);
+          if (res.error) {
+            setPart('model', 'error', res.error);
+          } else {
+            currentModel = res.data.model;
+            const modelGeneratedAt = now();
+            onCacheUpdate('financial', { financialModel: currentModel, modelSignature: sig.model, modelGeneratedAt, modelCost: usage });
+            if (modelGeneratedAt > contextStamp) contextStamp = modelGeneratedAt;
+            setPart('model', 'done');
+          }
+        }
+        const fs = currentModel ? computeFinancialSummary(currentModel) : null;
+        if (needsModel && !fs) {
+          setPart('report', 'error', 'This milestone is built on the financial model, which could not be generated. Try again.');
+          return;
+        }
+
+        const ctx = { ...base, priorContext, financialSummary: fs };
+        const jobs = [];
+        if (force || !report) {
+          jobs.push((async () => {
+            setPart('report', 'loading');
+            const res = await fetchMilestoneReport({ ...ctx, milestoneKey: key, milestoneName: milestone.name });
+            const usage = res.data?.usage || res.usage;
+            if (usage) onUsage('report', key, usage);
+            if (res.error) return setPart('report', 'error', res.error);
+            onCacheUpdate(key, { report: res.data.report, reportSignature: sig.report, reportGeneratedAt: now(), reportContextStamp: contextStamp, reportCost: usage });
+            setPart('report', 'done');
+          })());
+        }
+        if (isCompetitor && (force || !matrix)) {
+          jobs.push((async () => {
+            setPart('matrix', 'loading');
+            const res = await fetchCompetitorMatrix(ctx);
+            const usage = res.data?.usage || res.usage;
+            if (usage) onUsage('matrix', key, usage);
+            if (res.error) return setPart('matrix', 'error', res.error);
+            onCacheUpdate(key, { matrix: res.data.matrix, matrixSignature: sig.matrix, matrixGeneratedAt: now(), matrixCost: usage });
+            setPart('matrix', 'done');
+          })());
+        }
+        if (isPitch && (force || !deck)) {
+          jobs.push((async () => {
+            setPart('deck', 'loading');
+            const res = await fetchPitchDeck(ctx);
+            const usage = res.data?.usage || res.usage;
+            if (usage) onUsage('deck', key, usage);
+            if (res.error) return setPart('deck', 'error', res.error);
+            onCacheUpdate(key, { deck: res.data.deck, deckSignature: sig.deck, deckGeneratedAt: now(), deckCost: usage });
+            setPart('deck', 'done');
+          })());
+        }
+        await Promise.all(jobs);
+      }
+
+      async function generate(opts) {
+        if (IN_FLIGHT.has(flightKey)) return;
+        const promise = runGeneration(opts);
+        IN_FLIGHT.set(flightKey, promise);
+        try { await promise; } finally { IN_FLIGHT.delete(flightKey); }
+      }
+
+      useEffect(() => {
+        const running = IN_FLIGHT.get(flightKey);
+        if (running) {
+          setStatus({ report: 'loading' });
+          running.finally(() => setStatus({}));
+          return;
+        }
+        if (missingSomething()) generate();
+      }, [flightKey]);
+
+      const regenerate = () => {
+        const notes = regenNotes.trim() || undefined;
+        setShowRegenBox(false);
+        setRegenNotes('');
+        generate({ force: true, notes });
+      };
+
+      const displayReport = useMemo(() => (report ? injectModelTables(report, financialSummary) : null), [report, financialSummary]);
+      const docOpts = { research: profile.research, businessName: profile.name };
+
+      const downloadPDF = () => displayReport && generateReportPDF(displayReport, milestone, intake, docOpts);
       const printReport = () => {
-        if (!report) return;
+        if (!displayReport) return;
         const printWindow = window.open('', '', 'width=900,height=1100');
-        printWindow.document.write(buildReportHTML(report, milestone, intake));
+        printWindow.document.write(buildReportHTML(displayReport, milestone, intake, docOpts));
         printWindow.document.close();
         printWindow.focus();
         setTimeout(() => printWindow.print(), 300);
       };
-
-      const downloadCompetitorExcel = () => {
-        if (!matrix) return;
-        generateCompetitorExcel(matrix, milestone, intake);
-      };
-
-      const downloadFinancialExcel = () => {
-        if (!financialModel) return;
-        generateFinancialModelExcel(financialModel, milestone, intake);
-      };
-
-      const [regenNotes, setRegenNotes] = useState('');
-      const [showRegenBox, setShowRegenBox] = useState(false);
-      const isBusy = loading || matrixLoading || modelLoading;
-
-      const regenerateMilestone = () => {
-        const trimmedNotes = regenNotes.trim() || undefined;
-
-        setLoading(true);
-        setError(null);
-        generateMilestoneReport(milestone.key, milestone.name, sow, intake, (result) => {
-          setLoading(false);
-          if (result.error) {
-            setError(result.error);
-          } else {
-            setReport(result);
-            onCacheUpdate(milestone.key, { report: result, reportSignature, generatedAt: new Date().toISOString() });
-          }
-        }, trimmedNotes);
-
-        if (isCompetitorMilestone) {
-          setMatrixLoading(true);
-          setMatrixError(null);
-          generateCompetitorMatrix(sow, intake, (result) => {
-            setMatrixLoading(false);
-            if (result.error) {
-              setMatrixError(result.error);
-            } else {
-              setMatrix(result);
-              onCacheUpdate(milestone.key, { matrix: result, matrixSignature, generatedAt: new Date().toISOString() });
-            }
-          }, trimmedNotes);
+      const downloadDeck = async () => {
+        if (!deck) return;
+        setDeckBuilding(true);
+        try {
+          await generatePitchDeckPptx(deck, financialSummary, profile.research, profile.name);
+        } catch (e) {
+          reportClientError('pptx', e);
+          alert(`The deck couldn't be built: ${e.message}`);
+        } finally {
+          setDeckBuilding(false);
         }
-
-        if (isFinancialMilestone) {
-          setModelLoading(true);
-          setModelError(null);
-          generateFinancialModel(sow, intake, (result) => {
-            setModelLoading(false);
-            if (result.error) {
-              setModelError(result.error);
-            } else {
-              setFinancialModel(result);
-              onCacheUpdate(milestone.key, { financialModel: result, modelSignature, generatedAt: new Date().toISOString() });
-            }
-          }, trimmedNotes);
-        }
-
-        setShowRegenBox(false);
-        setRegenNotes('');
       };
 
-      const numberedReport = report ? parseAndNumberReport(report) : null;
-      const summarySection = numberedReport?.sections?.[0];
-      const restSections = numberedReport?.sections?.slice(1) || [];
+      const numberedReport = displayReport ? parseAndNumberReport(displayReport) : null;
+      const summarySection = numberedReport?.sections?.find(s => s.heading === 'Executive Summary') || numberedReport?.sections?.[0];
+      const restSections = (numberedReport?.sections || []).filter(s => s !== summarySection);
+      const sourceMap = sourceMapOf(profile.research);
+      const sources = displayReport ? citedSources(displayReport, profile.research) : [];
+
+      const upstreamChanged = report && entry.reportContextStamp && upstreamStampFor(profile, key) > entry.reportContextStamp;
+      const milestoneCost = [entry.reportCost, entry.matrixCost, entry.deckCost, isFinancial ? entry.modelCost : null]
+        .filter(Boolean).reduce((acc, u) => acc + (Number(u.usd) || 0), 0);
 
       return (
         <div className="view">
           <div className="report-banner">📊 {milestone.name}</div>
 
-          {loading && <div className="loading"><div className="spinner"></div> Generating report...</div>}
-
-          {error && (
-            <div className="error">
-              Error: {error}
-              <button className="secondary" style={{ marginLeft: '12px' }} onClick={() => regenerateMilestone()}>🔄 Try Again</button>
+          {!profile.research && (
+            <div className="notice">
+              This engagement has no live web research, so market sizes, competitor details and benchmarks in this report are AI estimates.
+              <div><button className="secondary" onClick={onRunResearch} disabled={busy}>🔎 Run Market Research</button></div>
             </div>
           )}
 
-          {report && (
+          {upstreamChanged && !busy && (
+            <div className="notice">
+              Earlier milestones, the financial model or the market research changed after this report was written, so it may no longer line up with them.
+              <div><button className="secondary" onClick={() => generate({ force: true })}>🔄 Regenerate to bring it in line</button></div>
+            </div>
+          )}
+
+          {busy && Object.entries(status).filter(([, v]) => v === 'loading').map(([part]) => (
+            <div key={part} className="progress-line"><div className="spinner"></div> {PROGRESS_TEXT[part]} <span className="muted">{formatElapsed(elapsed)}</span></div>
+          ))}
+          {busy && report && <p className="muted" style={{ fontSize: '13px', color: '#778' }}>Your current version stays below until the new one is ready. You can move to other milestones meanwhile.</p>}
+
+          {Object.entries(errors).filter(([, e]) => e).map(([part, e]) => (
+            <div key={part} className="error">
+              {part === 'report' ? 'Report' : part === 'matrix' ? 'Competitor comparison' : part === 'deck' ? 'Pitch deck' : 'Financial model'} error: {e}
+              <button className="secondary" style={{ marginLeft: '12px' }} onClick={() => generate()} disabled={busy}>🔄 Try Again</button>
+            </div>
+          ))}
+
+          {displayReport && (
             <>
               <div className="report-section">
-                <h3>{report.title}</h3>
+                <h3>{displayReport.title}</h3>
+                <div className="ai-disclaimer">{AI_DISCLAIMER}</div>
+
+                {displayReport.cover?.length > 0 && (
+                  <div className="report-table-wrap">
+                    <table className="report-table">
+                      <tbody>{displayReport.cover.map((r, i) => <tr key={i}><td style={{ fontWeight: 700, width: '35%' }}>{r.label}</td><td>{r.value}</td></tr>)}</tbody>
+                    </table>
+                  </div>
+                )}
 
                 {summarySection && (
                   <div className="report-highlight">
                     <h4>{summarySection.sectionNumber}. {summarySection.heading}</h4>
-                    {renderBlocksJSX(summarySection.blocks)}
+                    {renderBlocksJSX(summarySection.blocks, sourceMap)}
                   </div>
                 )}
 
                 {restSections.length > 0 && (
                   <div className="snapshot-outline">
-                    <h4>Also in this report</h4>
+                    <h4>Also in the full report</h4>
                     <ul>
                       {restSections.map((section) => (
                         <li key={section.sectionNumber}>{section.sectionNumber}. {section.heading}</li>
@@ -2634,34 +3646,28 @@ ${buildReportBodyHTML(report, milestone, intake)}
                     </ul>
                   </div>
                 )}
+
+                <SourcesPanel sources={sources} />
               </div>
 
-              <div style={{ textAlign: 'center', margin: '20px 0' }}>
+              <div style={{ textAlign: 'center', margin: '20px 0 4px' }}>
                 <button onClick={downloadPDF}>⬇️ Download Full Report</button>
                 <button onClick={printReport} className="secondary">🖨️ Print</button>
-                {isCompetitorMilestone && matrix && (
-                  <button onClick={downloadCompetitorExcel}>📊 Download Competitor Comparison (Excel)</button>
+                {isCompetitor && matrix && (
+                  <button onClick={() => generateCompetitorExcel(matrix, milestone, intake, profile.research)}>📊 Download Competitor Comparison (Excel)</button>
                 )}
-                {isCompetitorMilestone && matrixLoading && (
-                  <span style={{ marginLeft: '12px', color: '#888', fontSize: '11pt' }}>Building competitor comparison…</span>
+                {isFinancial && model && (
+                  <button onClick={() => generateFinancialModelExcel(model, milestone, intake, profile.research)}>📈 Download Financial Model (Excel)</button>
                 )}
-                {isCompetitorMilestone && matrixError && (
-                  <div className="error" style={{ marginTop: '12px' }}>Competitor comparison unavailable: {matrixError}</div>
-                )}
-                {isFinancialMilestone && financialModel && (
-                  <button onClick={downloadFinancialExcel}>📈 Download Financial Model (Excel)</button>
-                )}
-                {isFinancialMilestone && modelLoading && (
-                  <span style={{ marginLeft: '12px', color: '#888', fontSize: '11pt' }}>Building financial model…</span>
-                )}
-                {isFinancialMilestone && modelError && (
-                  <div className="error" style={{ marginTop: '12px' }}>Financial model unavailable: {modelError}</div>
+                {isPitch && deck && (
+                  <button onClick={downloadDeck} disabled={deckBuilding}>{deckBuilding ? '⏳ Building deck…' : '🖥️ Download Pitch Deck (PowerPoint)'}</button>
                 )}
               </div>
+              {milestoneCost > 0 && <p className="cost-line">AI cost of the current version of this milestone: {fmtUSDPrecise(milestoneCost)}</p>}
 
               <div style={{ margin: '8px 0 20px', textAlign: 'center' }}>
                 {!showRegenBox && (
-                  <button className="secondary" onClick={() => setShowRegenBox(true)} disabled={isBusy}>
+                  <button className="secondary" onClick={() => setShowRegenBox(true)} disabled={busy}>
                     🔄 Regenerate This Milestone
                   </button>
                 )}
@@ -2677,8 +3683,8 @@ ${buildReportBodyHTML(report, milestone, intake)}
                       rows={3}
                       style={{ width: '100%', marginBottom: '10px', fontFamily: 'inherit' }}
                     />
-                    <button onClick={regenerateMilestone} disabled={isBusy}>🔄 Regenerate</button>
-                    <button className="secondary" onClick={() => { setShowRegenBox(false); setRegenNotes(''); }} disabled={isBusy}>Cancel</button>
+                    <button onClick={regenerate} disabled={busy}>🔄 Regenerate</button>
+                    <button className="secondary" onClick={() => { setShowRegenBox(false); setRegenNotes(''); }} disabled={busy}>Cancel</button>
                   </div>
                 )}
               </div>
@@ -2686,8 +3692,8 @@ ${buildReportBodyHTML(report, milestone, intake)}
           )}
 
           <div style={{ marginTop: '30px', display: 'flex', gap: '12px' }}>
-            <button onClick={onPrev} disabled={isFirst || loading}>← Previous</button>
-            <button className="secondary" onClick={onNext} disabled={loading}>
+            <button onClick={onPrev} disabled={isFirst}>← Previous</button>
+            <button className="secondary" onClick={onNext}>
               {isLast ? '✅ Complete' : 'Next →'}
             </button>
           </div>
@@ -2695,20 +3701,91 @@ ${buildReportBodyHTML(report, milestone, intake)}
       );
     }
 
-    function CompleteStep() {
+    function CompleteStep({ profile, bookingUrl, onOpenMilestone }) {
+      const generated = MILESTONE_CATALOG.filter(m => profile.milestoneReports?.[m.key]?.report);
+      const financialSummary = useMemo(() => computeFinancialSummary(validModel(profile)), [profile]);
+      const [building, setBuilding] = useState(false);
+
+      const downloadBook = async () => {
+        setBuilding(true);
+        try {
+          await generateStrategyBookPDF(profile, MILESTONE_CATALOG, financialSummary);
+        } catch (e) {
+          reportClientError('strategy-book', e);
+          alert(`The Strategy Book couldn't be built: ${e.message}`);
+        } finally {
+          setBuilding(false);
+        }
+      };
+
+      const log = profile.usageLog || [];
+      const sumWhere = (pred) => log.filter(pred).reduce((acc, e) => acc + (Number(e.usd) || 0), 0);
+      const costRows = [
+        { label: 'Scope of work', usd: sumWhere(e => e.kind === 'sow' || e.kind === 'sow-chat') },
+        { label: 'Market research', usd: sumWhere(e => e.kind === 'research') },
+        ...MILESTONE_CATALOG.map(m => ({ label: m.name, usd: sumWhere(e => e.key === m.key) })),
+      ].filter(r => r.usd > 0);
+      const total = totalUsageUSD(profile);
+
       return (
         <div className="view">
-          <h1>🎉 Engagement Complete</h1>
+          <h1>{generated.length === MILESTONE_CATALOG.length ? '🎉 Engagement Complete' : 'Strategy Book'}</h1>
+
           <div className="card">
-            <p>Your MarketEdge strategy portal has been generated. You can now:</p>
-            <ul style={{ marginLeft: '20px', marginTop: '12px' }}>
-              <li>Review all milestone reports</li>
-              <li>Download and share your Strategy Book</li>
-              <li>Schedule a follow-up consultation</li>
-            </ul>
-            <button style={{ marginTop: '20px' }}>📅 Book Follow-up Call</button>
+            <h3 style={{ marginBottom: '8px' }}>Your Strategy Book</h3>
+            <p style={{ color: '#555', marginBottom: '12px' }}>One PDF combining every generated milestone, with a contents page and a single list of sources.</p>
+            <table className="complete-table">
+              <tbody>
+                {MILESTONE_CATALOG.map((m, i) => {
+                  const done = !!profile.milestoneReports?.[m.key]?.report;
+                  return (
+                    <tr key={m.key}>
+                      <td>{done ? '✅' : '⬜'} {m.name}</td>
+                      <td className="num"><button className="secondary" style={{ margin: 0, padding: '6px 12px', fontSize: '12px' }} onClick={() => onOpenMilestone(i)}>{done ? 'Open' : 'Generate'}</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <button onClick={downloadBook} disabled={building || generated.length === 0}>
+              {building ? '⏳ Building Strategy Book…' : `📘 Download Strategy Book (${generated.length} milestone${generated.length === 1 ? '' : 's'})`}
+            </button>
           </div>
+
+          {bookingUrl && (
+            <div className="card">
+              <h3 style={{ marginBottom: '8px' }}>Talk it through</h3>
+              <p style={{ color: '#555' }}>Book a follow-up call to walk through the strategy and next steps.</p>
+              <button style={{ marginTop: '12px' }} onClick={() => window.open(bookingUrl, '_blank', 'noopener')}>📅 Book Follow-up Call</button>
+            </div>
+          )}
+
+          {total > 0 && (
+            <div className="card">
+              <h3 style={{ marginBottom: '8px' }}>AI cost of this engagement</h3>
+              <p style={{ color: '#555', fontSize: '14px' }}>Actual Anthropic API usage, including regenerations, at Claude Sonnet 5 rates ($2 / $10 per million input / output tokens) plus $0.01 per web search.</p>
+              <table className="complete-table">
+                <thead><tr><th>Step</th><th className="num">Cost</th></tr></thead>
+                <tbody>
+                  {costRows.map(r => <tr key={r.label}><td>{r.label}</td><td className="num">{fmtUSDPrecise(r.usd)}</td></tr>)}
+                  <tr><td><strong>Total</strong></td><td className="num"><strong>{fmtUSDPrecise(total)}</strong></td></tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
+      );
+    }
+
+    function AppFooter() {
+      return (
+        <footer className="app-footer">
+          © {new Date().getFullYear()} MarketEdge · AI-generated analysis — verify before relying on it
+          <div style={{ marginTop: '6px' }}>
+            <a href="/terms" target="_blank" rel="noopener">Terms of Service</a>
+            <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>
+          </div>
+        </footer>
       );
     }
 
@@ -2716,8 +3793,10 @@ ${buildReportBodyHTML(report, milestone, intake)}
     function App() {
       const [view, setView] = useState('login');
       const [profile, setProfile] = useState(null);
+      const [config, setConfig] = useState({});
 
       useEffect(() => {
+        loadAppConfig().then(setConfig);
         const currentBusinessId = storage.getCurrentBusinessId();
         if (currentBusinessId) {
           const profiles = storage.getProfiles();
@@ -2729,15 +3808,17 @@ ${buildReportBodyHTML(report, milestone, intake)}
         }
       }, []);
 
+      const hasAnyReport = MILESTONE_CATALOG.some(m => profile?.milestoneReports?.[m.key]?.report);
       const allSteps = [
         { key: 'intake', label: 'Intake', completed: !!profile?.intake },
         { key: 'sow_review', label: 'SOW Review', completed: !!profile?.sow },
+        { key: 'research', label: 'Market Research', completed: !!profile?.research },
         ...MILESTONE_CATALOG.map((m, i) => ({
           key: `milestone-${i}`,
           label: m.name,
-          completed: profile?.milestones?.[i]?.completed
+          completed: !!profile?.milestoneReports?.[m.key]?.report,
         })),
-        { key: 'complete', label: 'Complete', completed: profile?.stage === 'complete' }
+        { key: 'complete', label: 'Strategy Book', completed: profile?.stage === 'complete' }
       ];
 
       const persistProfile = (prev, updates) => {
@@ -2764,10 +3845,27 @@ ${buildReportBodyHTML(report, milestone, intake)}
         }));
       };
 
+      const recordUsage = (kind, key, usage) => {
+        if (!usage) return;
+        const row = {
+          at: new Date().toISOString(), kind, key,
+          usd: Number(usage.usd) || 0,
+          inputTokens: usage.inputTokens || 0, outputTokens: usage.outputTokens || 0,
+          cacheReadTokens: usage.cacheReadTokens || 0, webSearches: usage.webSearches || 0,
+        };
+        setProfile(prev => persistProfile(prev, { usageLog: [...(prev.usageLog || []), row] }));
+      };
+
       const handleStepClick = (stepKey) => {
-        if (stepKey.startsWith('milestone-')) {
+        const pastScope = profile && ['research', 'milestones', 'complete'].includes(profile.stage);
+        if (!pastScope) return;
+        if (stepKey === 'research') {
+          handleUpdateProfile({ stage: 'research' });
+        } else if (stepKey.startsWith('milestone-')) {
           const idx = parseInt(stepKey.split('-')[1]);
-          handleUpdateProfile({ currentMilestoneIndex: idx });
+          handleUpdateProfile({ stage: 'milestones', currentMilestoneIndex: idx });
+        } else if (stepKey === 'complete' && hasAnyReport) {
+          handleUpdateProfile({ stage: 'complete' });
         }
       };
 
@@ -2794,8 +3892,10 @@ ${buildReportBodyHTML(report, milestone, intake)}
           stage: 'intake',
           intake: null,
           sow: null,
+          research: null,
           milestones: [],
           milestoneReports: {},
+          usageLog: [],
           sowFeedback: [],
           currentMilestoneIndex: 0
         };
@@ -2811,32 +3911,40 @@ ${buildReportBodyHTML(report, milestone, intake)}
       };
 
       if (view === 'login') {
-        return <LoginView onLogin={handleLogin} />;
+        return <><LoginView onLogin={handleLogin} /><AppFooter /></>;
       }
 
       if (view === 'business-selector') {
-        return <BusinessSelectorView onSelectBusiness={handleSelectBusiness} onCreateBusiness={handleCreateBusiness} />;
+        return <><BusinessSelectorView onSelectBusiness={handleSelectBusiness} onCreateBusiness={handleCreateBusiness} /><AppFooter /></>;
       }
 
       if (view === 'engagement' && profile) {
         const currentIndex = profile.currentMilestoneIndex || 0;
         const currentMilestone = MILESTONE_CATALOG[currentIndex];
+        const currentStep = profile.stage === 'intake' ? 'intake'
+          : profile.stage === 'sow_review' ? 'sow_review'
+          : profile.stage === 'research' ? 'research'
+          : profile.stage === 'complete' ? 'complete'
+          : `milestone-${currentIndex}`;
 
         return (
           <div className="app-container">
             <ProgressSidebar
-              currentStep={profile.stage === 'intake' ? 'intake' : profile.stage === 'sow_review' ? 'sow_review' : `milestone-${currentIndex}`}
+              currentStep={currentStep}
               onStepClick={handleStepClick}
               allSteps={allSteps}
               currentBusinessName={profile.name}
               onSwitchBusiness={handleSwitchBusiness}
+              totalCost={totalUsageUSD(profile)}
             />
             <div className="main-content">
               {profile.stage === 'intake' && (
                 <IntakeStep
                   initialIntake={profile.intake}
-                  onComplete={(intake, sow) => {
-                    handleUpdateProfile({ intake, sow, stage: 'sow_review' });
+                  initialConsent={profile.consentAt}
+                  onComplete={(intake, sow, usage) => {
+                    handleUpdateProfile({ intake, sow, stage: 'sow_review', consentAt: profile.consentAt || new Date().toISOString() });
+                    recordUsage('sow', null, usage);
                   }}
                 />
               )}
@@ -2844,22 +3952,32 @@ ${buildReportBodyHTML(report, milestone, intake)}
                 <SOWStep
                   sow={profile.sow}
                   intake={profile.intake}
+                  onUsage={recordUsage}
                   onRevision={(newSOW) => {
                     handleUpdateProfile({ sow: newSOW });
                   }}
                   onApprove={() => {
-                    handleUpdateProfile({ stage: 'milestones', currentMilestoneIndex: 0 });
+                    handleUpdateProfile({ stage: 'research', currentMilestoneIndex: 0 });
                   }}
+                />
+              )}
+              {profile.stage === 'research' && (
+                <ResearchStep
+                  profile={profile}
+                  onUsage={recordUsage}
+                  onResearch={(research) => handleUpdateProfile({ research })}
+                  onSkip={() => handleUpdateProfile({ stage: 'milestones' })}
+                  onContinue={() => handleUpdateProfile({ stage: 'milestones' })}
                 />
               )}
               {profile.stage === 'milestones' && currentMilestone && (
                 <MilestoneStep
                   key={currentMilestone.key}
                   milestone={currentMilestone}
-                  sow={profile.sow}
-                  intake={profile.intake}
-                  cachedEntry={profile.milestoneReports?.[currentMilestone.key] || null}
+                  profile={profile}
                   onCacheUpdate={handleCacheUpdate}
+                  onUsage={recordUsage}
+                  onRunResearch={() => handleUpdateProfile({ stage: 'research' })}
                   onNext={() => {
                     if (currentIndex >= MILESTONE_CATALOG.length - 1) {
                       handleUpdateProfile({ stage: 'complete' });
@@ -2876,7 +3994,14 @@ ${buildReportBodyHTML(report, milestone, intake)}
                   isLast={currentIndex >= MILESTONE_CATALOG.length - 1}
                 />
               )}
-              {profile.stage === 'complete' && <CompleteStep />}
+              {profile.stage === 'complete' && (
+                <CompleteStep
+                  profile={profile}
+                  bookingUrl={config.bookingUrl}
+                  onOpenMilestone={(idx) => handleUpdateProfile({ stage: 'milestones', currentMilestoneIndex: idx })}
+                />
+              )}
+              <AppFooter />
             </div>
           </div>
         );
