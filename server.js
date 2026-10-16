@@ -2,9 +2,8 @@ import express from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { safeParseJSON } from './lib/json.js';
 import { parseTextReport, parseKeyValueLines } from './lib/report.js';
-import { runClaude, RefusalError } from './lib/claude.js';
+import { runClaude, runClaudeJSON, RefusalError } from './lib/claude.js';
 import { collectSearchSources, buildResearch, sanitizeResearch, formatFactBase, CITATION_RULES } from './lib/research.js';
 import { sanitizeFinancialSummary, formatFinancialSummary, sanitizePriorContext, formatPriorContext } from './lib/context.js';
 
@@ -36,6 +35,33 @@ const MILESTONE_CATALOG = [
   { key: "pitch", name: "Pitch Deck", desc: "The investor narrative, slide by slide" },
   { key: "execbrief", name: "Executive Brief", desc: "The whole strategy on two pages" },
 ];
+
+// Structured-output schemas: the API guarantees replies to these endpoints are valid JSON
+// in exactly this shape, so text that quotes the client's brief can't break parsing.
+const SOW_MILESTONE_SCHEMA = {
+  type: 'object',
+  properties: {
+    key: { type: 'string', enum: MILESTONE_CATALOG.map(m => m.key) },
+    name: { type: 'string' },
+    rationale: { type: 'string' },
+  },
+  required: ['key', 'name', 'rationale'],
+  additionalProperties: false,
+};
+const SOW_SCHEMA = {
+  type: 'object',
+  properties: {
+    engagement_summary: { type: 'string' },
+    milestones: { type: 'array', items: SOW_MILESTONE_SCHEMA },
+  },
+  required: ['engagement_summary', 'milestones'],
+  additionalProperties: false,
+};
+const SOW_REVISION_SCHEMA = {
+  ...SOW_SCHEMA,
+  properties: { ...SOW_SCHEMA.properties, changes_made: { type: 'string' } },
+  required: [...SOW_SCHEMA.required, 'changes_made'],
+};
 
 // Per-milestone guidance for what the DETAILED_ANALYSIS section must specifically cover.
 const MILESTONE_FOCUS = {
@@ -237,17 +263,13 @@ ${catalog}
 Select 4–9 milestones that this specific client needs, in the right order (analysis before strategy before documents). Anchor every rationale in facts from THEIR brief — quote their numbers and constraints. For each milestone's rationale, write 5-6 sentences that clearly explain: what this milestone will actually cover, the specific questions it will answer for THIS client, and why it matters given their brief — not a generic description of the milestone type. Respond ONLY with valid JSON (no markdown, no fences):
 {"engagement_summary": "3-4 sentences describing this engagement in specific terms drawn from their brief","milestones": [{"key":"customer","name":"Customer Analysis","rationale":"5-6 sentences: what this milestone covers for THIS client, the specific questions it answers, and why it matters given their brief"}]}`;
 
-    const result = await runClaude(client, {
+    const result = await runClaudeJSON(client, {
       maxTokens: 4000,
       system: SENIOR_VOICE + JSON_ONLY,
       messages: [{ role: "user", content: prompt }],
+      schema: SOW_SCHEMA,
     });
-
-    if (!result.text.trim()) {
-      return res.status(500).json({ error: "Empty response from Claude" });
-    }
-
-    const sow = safeParseJSON(result.text);
+    const sow = result.data;
 
     if (!sow?.milestones || !Array.isArray(sow.milestones) || sow.milestones.length === 0) {
       return res.status(500).json({ error: "Invalid SOW structure: missing or empty milestones" });
@@ -307,27 +329,20 @@ Make the requested changes. Keep every unchanged milestone's rationale exactly a
       ? SENIOR_VOICE + ` Respond with a concise plain-text answer only — no JSON, no markdown, no section headers.`
       : SENIOR_VOICE + JSON_ONLY;
 
-    const result = await runClaude(client, {
-      maxTokens: 4000,
-      system,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    if (!result.text) {
-      return res.status(500).json({ error: "Empty response from Claude" });
-    }
+    const request = { maxTokens: 4000, system, messages: [{ role: "user", content: prompt }] };
 
     if (responseType === "answer") {
+      const result = await runClaude(client, request);
+      if (!result.text) {
+        return res.status(500).json({ error: "Empty response from Claude" });
+      }
       res.status(200).json({ success: true, type: "answer", response: result.text, usage: result.usage });
     } else {
-      let revisedData;
-      try {
-        revisedData = safeParseJSON(result.text.replace(/\r?\n/g, " "));
-      } catch (parseErr) {
-        return res.status(500).json({ error: `Failed to parse revisions: ${parseErr.message}` });
+      const result = await runClaudeJSON(client, { ...request, schema: SOW_REVISION_SCHEMA });
+      if (!Array.isArray(result.data.milestones) || result.data.milestones.length === 0) {
+        return res.status(500).json({ error: "The revised scope came back without milestones. Try rephrasing the change." });
       }
-
-      res.status(200).json({ success: true, type: "revision", sow: revisedData, usage: result.usage });
+      res.status(200).json({ success: true, type: "revision", sow: result.data, usage: result.usage });
     }
   } catch (err) {
     sendError(res, err, "Failed to process request");
@@ -369,14 +384,15 @@ Rules:
 - Include only facts you actually found in a search result — no figures from memory.
 - Aim for 12-25 facts and 5-12 competitors; fewer is fine if the evidence is thin — say what's missing in "gaps".`;
 
-    const result = await runClaude(client, {
+    // No structured-output schema here: it can't be combined with web-search citations.
+    const result = await runClaudeJSON(client, {
       maxTokens: 16000,
       system: SENIOR_VOICE + ` You are doing the desk research phase of an engagement: use the web_search tool, then report only what the sources support. Your final answer must be ONLY valid JSON matching the requested structure — no markdown, no code fences, no prose after the JSON.`,
       messages: [{ role: 'user', content: prompt }],
       tools: [webSearch],
     });
 
-    const raw = safeParseJSON(result.text);
+    const raw = result.data;
     const sourceMap = collectSearchSources(result.content);
     const research = buildResearch(raw, sourceMap, { searchCount: result.usage.webSearches });
 
@@ -495,18 +511,14 @@ Set "source_id" to the [S#] id (e.g. "S4", without brackets) that verifies the c
 Respond with ONLY valid JSON (no markdown, no fences):
 {"competitors": [{"name": "Company Name", "source_id": "S4", "values": {"overview": "...", "location": "...", "stage": "...", "revenue": "...", "funding": "...", "pricing_model": "...", "price_point": "...", "market_share": "...", "core_offering": "...", "key_strengths": "...", "key_weaknesses": "...", "target_segment": "...", "gtm_channels": "...", "marketing_angle": "...", "growth_plan": "...", "where_strong": "...", "where_weak": "...", "differentiation": "..."}}]}`;
 
-    const result = await runClaude(client, {
+    const result = await runClaudeJSON(client, {
       // 15 competitors x 18 fields easily runs past 8000 tokens of JSON.
       maxTokens: 16000,
       system: SENIOR_VOICE + JSON_ONLY + ` Every competitor object must include a value for every column key listed — never omit a key.\n\n${CITATION_RULES}`,
       messages: [{ role: "user", content: contextBlocks(ctx, instructions) }],
     });
 
-    if (!result.text) {
-      return res.status(500).json({ error: "Empty response from Claude" });
-    }
-
-    const matrix = safeParseJSON(result.text);
+    const matrix = result.data;
 
     if (!matrix?.competitors || !Array.isArray(matrix.competitors)) {
       return res.status(500).json({ error: "Invalid competitor matrix: missing competitors" });
@@ -610,17 +622,13 @@ Sizing guidance:
 - expenseCategories: 8-12 categories (e.g. Workspace & Facilities, Technology & Cloud Infrastructure, Software & SaaS Subscriptions, Hardware & Equipment, Travel, Legal & Compliance, Finance & Accounting, HR & Recruitment, Marketing & Events, Insurance, Contingency), each with 2-4 concrete line items grounded in this client's industry and market — not generic placeholders.
 - funding: revenueMultiple and equityPctForRaise should reflect what's typical for this client's industry and stage; cacByYear should decline as the brand matures.`;
 
-    const result = await runClaude(client, {
+    const result = await runClaudeJSON(client, {
       maxTokens: 16000,
       system: SENIOR_VOICE + JSON_ONLY + ` Every numeric field must be a real number, not a string, and not zero unless the assumption genuinely is zero (e.g. a market entered in a later year).`,
       messages: [{ role: "user", content: contextBlocks({ ...ctx, financial: null }, instructions) }],
     });
 
-    if (!result.text) {
-      return res.status(500).json({ error: "Empty response from Claude" });
-    }
-
-    const model = safeParseJSON(result.text);
+    const model = result.data;
 
     // Drop any incomplete trailing entry a truncation repair may have left behind, and
     // normalize arrays that might be missing entirely so the Excel builder never crashes.
@@ -805,13 +813,13 @@ INDUSTRY (${intake.industry}): add ONE extra slide where it matters for this ind
 
 Any number you put in a title, card, stat, segment or table must match the FINANCIAL MODEL figures or carry an [S#] citation from the fact base; otherwise mark it "(est.)". Keep text tight — slides, not paragraphs.`;
 
-    const result = await runClaude(client, {
+    const result = await runClaudeJSON(client, {
       maxTokens: 12000,
       system: SENIOR_VOICE + JSON_ONLY + `\n\n${CITATION_RULES}`,
       messages: [{ role: 'user', content: contextBlocks(ctx, instructions) }],
     });
 
-    const deck = sanitizeDeck(safeParseJSON(result.text));
+    const deck = sanitizeDeck(result.data);
     if (deck.slides.length < 5) {
       return res.status(500).json({ error: "The deck came back incomplete. Try regenerating." });
     }
