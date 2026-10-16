@@ -2908,10 +2908,23 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
       return cols.map(() => 0);
     }
 
+    // Each "Subtotal — <category>" row of the Expense Analysis sheet, Year 1-5 (columns E-I).
+    function expenseSubtotals(ws) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      const out = [];
+      for (let r = range.s.r + 1; r <= range.e.r + 1; r++) {
+        const label = ws[`B${r}`]?.v;
+        if (typeof label === 'string' && label.startsWith('Subtotal — ')) {
+          out.push({ name: label.slice('Subtotal — '.length), values: [4, 5, 6, 7, 8].map(c => Number(ws[xlAddr(c, r)]?.v) || 0) });
+        }
+      }
+      return out;
+    }
+
     function computeFinancialSummary(model) {
       if (!model) return null;
       try {
-        const { tamSamSom, salary, pl } = buildFinancialWorkbook(model);
+        const { tamSamSom, salary, expense, pl } = buildFinancialWorkbook(model);
         const ts = tamSamSom.ws, p = pl.ws;
         const ebitda = sheetRowValues(p, 'EBITDA');
         const cumulativeCash = sheetRowValues(p, 'Cumulative Cash');
@@ -2922,6 +2935,9 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
           acv: sheetRowValues(ts, 'Blended ACV'),
           grossProfit: sheetRowValues(p, 'GROSS PROFIT'),
           totalCosts: sheetRowValues(p, 'TOTAL OPERATING COSTS'),
+          salaries: sheetRowValues(p, 'Salaries & People Costs'),
+          opex: sheetRowValues(p, 'Operating Expenses'),
+          costCategories: expenseSubtotals(expense.ws),
           ebitda,
           ebitdaMargin: sheetRowValues(p, '  EBITDA Margin'),
           cumulativeCash,
@@ -3196,6 +3212,140 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
             slide.addText('What this raise achieves', { x: 6.8, y: 1.0, w: 2.7, h: 0.4, fontSize: 13, bold: true, color: DECK.navy, fontFace: DECK.bodyFont });
             slide.addText((sl.milestones || []).map(m => ({ text: m, options: { bullet: { code: '25A0' }, breakLine: true } })), {
               x: 6.8, y: 1.4, w: 2.7, h: 3.1, fontSize: 11.5, color: DECK.body, fontFace: DECK.bodyFont, paraSpaceAfter: 6, valign: 'top', fit: 'shrink',
+            });
+            break;
+          }
+          case 'missionVision': {
+            deckTitle(slide, sl.title || 'Mission & Vision');
+            const panels = [
+              { label: 'OUR MISSION', text: sl.mission, x: 0.5, fill: DECK.navy, color: DECK.white, labelColor: DECK.light },
+              { label: 'OUR VISION', text: sl.vision, x: 5.1, fill: DECK.card, color: DECK.navy, labelColor: DECK.accent },
+            ];
+            panels.forEach(pn => {
+              slide.addShape('rect', { x: pn.x, y: 1.0, w: 4.4, h: 2.45, fill: { color: pn.fill }, line: { color: pn.fill } });
+              slide.addShape('rect', { x: pn.x, y: 1.0, w: 4.4, h: 0.07, fill: { color: DECK.accent }, line: { color: DECK.accent } });
+              slide.addText(pn.label, { x: pn.x + 0.25, y: 1.15, w: 3.9, h: 0.35, fontFace: DECK.bodyFont, fontSize: 11, bold: true, color: pn.labelColor, charSpacing: 2 });
+              slide.addText(pn.text || '', { x: pn.x + 0.25, y: 1.5, w: 3.9, h: 1.85, fontFace: DECK.titleFont, fontSize: 17, color: pn.color, valign: 'top', fit: 'shrink' });
+            });
+            const values = sl.values || [];
+            if (values.length) {
+              slide.addText('WHAT WE STAND FOR', { x: 0.5, y: 3.62, w: 4, h: 0.3, fontFace: DECK.bodyFont, fontSize: 10, bold: true, color: DECK.muted, charSpacing: 2 });
+              const w = (9.0 - 0.2 * (values.length - 1)) / values.length;
+              values.forEach((v, i) => {
+                const x = 0.5 + i * (w + 0.2);
+                slide.addShape('rect', { x, y: 3.98, w, h: 0.62, fill: { color: DECK.card }, line: { color: DECK.card } });
+                slide.addShape('rect', { x, y: 3.98, w: 0.06, h: 0.62, fill: { color: DECK.accent }, line: { color: DECK.accent } });
+                slide.addText(v, { x: x + 0.15, y: 3.98, w: w - 0.25, h: 0.62, fontFace: DECK.bodyFont, fontSize: 12, bold: true, color: DECK.navy, valign: 'middle', fit: 'shrink' });
+              });
+            }
+            break;
+          }
+          case 'about': {
+            deckTitle(slide, sl.title || 'About Us');
+            slide.addShape('rect', { x: 0.5, y: 1.05, w: 0.08, h: 3.4, fill: { color: DECK.accent }, line: { color: DECK.accent } });
+            slide.addText(sl.summary || '', { x: 0.75, y: 1.05, w: 4.9, h: 3.4, fontFace: DECK.titleFont, fontSize: 16, color: DECK.body, valign: 'top', paraSpaceAfter: 6, fit: 'shrink' });
+            (sl.facts || []).forEach((f, i) => {
+              const y = 1.05 + i * 0.58;
+              slide.addShape('rect', { x: 6.0, y, w: 3.5, h: 0.52, fill: { color: DECK.card }, line: { color: DECK.card } });
+              slide.addText([
+                { text: f.label.toUpperCase(), options: { fontSize: 8.5, color: DECK.muted, bold: true, breakLine: true } },
+                { text: f.value, options: { fontSize: 12, color: DECK.navy, bold: true } },
+              ], { x: 6.15, y, w: 3.25, h: 0.52, fontFace: DECK.bodyFont, valign: 'middle', fit: 'shrink' });
+            });
+            break;
+          }
+          case 'problemSolution': {
+            deckTitle(slide, sl.title || 'Problem & Solution');
+            const columns = [
+              { head: 'THE PROBLEM', items: sl.problems || [], x: 0.5, fill: DECK.accent },
+              { head: 'OUR SOLUTION', items: sl.solutions || [], x: 5.2, fill: DECK.teal },
+            ];
+            columns.forEach(col => {
+              slide.addShape('rect', { x: col.x, y: 1.0, w: 4.3, h: 0.42, fill: { color: col.fill }, line: { color: col.fill } });
+              slide.addText(col.head, { x: col.x + 0.15, y: 1.0, w: 4.0, h: 0.42, fontFace: DECK.bodyFont, fontSize: 12, bold: true, color: DECK.white, valign: 'middle', charSpacing: 2 });
+              col.items.forEach((it, i) => {
+                const y = 1.55 + i * 1.02;
+                slide.addShape('rect', { x: col.x, y, w: 4.3, h: 0.92, fill: { color: DECK.card }, line: { color: DECK.card } });
+                slide.addText([
+                  { text: it.headline, options: { bold: true, fontSize: 13, color: DECK.navy, breakLine: true } },
+                  { text: it.detail, options: { fontSize: 10.5, color: DECK.body } },
+                ], { x: col.x + 0.15, y, w: 4.0, h: 0.92, fontFace: DECK.bodyFont, valign: 'middle', fit: 'shrink' });
+              });
+            });
+            const rows = Math.max((sl.problems || []).length, (sl.solutions || []).length);
+            for (let i = 0; i < rows; i++) {
+              slide.addText('→', { x: 4.8, y: 1.55 + i * 1.02, w: 0.4, h: 0.92, fontSize: 20, bold: true, color: DECK.accent, align: 'center', valign: 'middle' });
+            }
+            break;
+          }
+          case 'targetCustomers': {
+            deckTitle(slide, sl.title || 'Target Customers');
+            const segs = sl.segments || [];
+            const w = (9.0 - 0.2 * (segs.length - 1)) / Math.max(1, segs.length);
+            segs.forEach((g, i) => {
+              const x = 0.5 + i * (w + 0.2);
+              slide.addShape('rect', { x, y: 1.0, w, h: 3.45, fill: { color: DECK.card }, line: { color: DECK.card } });
+              slide.addShape('rect', { x, y: 1.0, w, h: 0.07, fill: { color: i === 0 ? DECK.accent : DECK.navy }, line: { color: i === 0 ? DECK.accent : DECK.navy } });
+              slide.addText(g.name, { x: x + 0.12, y: 1.12, w: w - 0.24, h: 0.55, fontFace: DECK.bodyFont, fontSize: 13.5, bold: true, color: DECK.navy, valign: 'top', fit: 'shrink' });
+              if (g.size) slide.addText(g.size, { x: x + 0.12, y: 1.68, w: w - 0.24, h: 0.4, fontFace: DECK.bodyFont, fontSize: 13, bold: true, color: DECK.accent, fit: 'shrink' });
+              slide.addText(g.profile, { x: x + 0.12, y: 2.1, w: w - 0.24, h: 1.2, fontFace: DECK.bodyFont, fontSize: 10.5, color: DECK.body, valign: 'top', fit: 'shrink' });
+              if (g.pain) slide.addText(`Pain: ${g.pain}`, { x: x + 0.12, y: 3.3, w: w - 0.24, h: 1.05, fontFace: DECK.bodyFont, fontSize: 10, italic: true, color: DECK.teal, valign: 'top', fit: 'shrink' });
+            });
+            deckTakeaway(slide, sl.beachhead ? `Beachhead: ${sl.beachhead}` : '');
+            break;
+          }
+          case 'competitors':
+            deckTitle(slide, sl.title || 'Competitors');
+            renderDeckTable(slide, ['Competitor', 'Positioning', 'Pricing', 'Gap We Exploit'],
+              (sl.competitors || []).map(c => [c.name, c.positioning, c.pricing, c.weakness]));
+            deckTakeaway(slide, sl.advantage ? `Our edge: ${sl.advantage}` : '');
+            break;
+          case 'marketing':
+            deckTitle(slide, sl.title || 'Marketing Strategy');
+            (sl.channels || []).forEach((c, i) => {
+              const y = 1.0 + i * 0.7;
+              slide.addShape('rect', { x: 0.5, y, w: 2.1, h: 0.62, fill: { color: DECK.navy }, line: { color: DECK.navy } });
+              slide.addText(c.channel, { x: 0.6, y, w: 1.9, h: 0.62, fontFace: DECK.bodyFont, fontSize: 12, bold: true, color: DECK.white, valign: 'middle', fit: 'shrink' });
+              slide.addShape('rect', { x: 2.65, y, w: 4.75, h: 0.62, fill: { color: DECK.card }, line: { color: DECK.card } });
+              slide.addText(c.tactic, { x: 2.75, y, w: 4.6, h: 0.62, fontFace: DECK.bodyFont, fontSize: 10.5, color: DECK.body, valign: 'middle', fit: 'shrink' });
+              slide.addShape('rect', { x: 7.45, y, w: 2.05, h: 0.62, fill: { color: 'FFF3E8' }, line: { color: 'FFF3E8' } });
+              slide.addText(c.kpi ? `KPI: ${c.kpi}` : '', { x: 7.5, y, w: 1.95, h: 0.62, fontFace: DECK.bodyFont, fontSize: 10, bold: true, color: DECK.accent, valign: 'middle', fit: 'shrink' });
+            });
+            deckTakeaway(slide, sl.callout);
+            break;
+          case 'costAnalysis': {
+            deckTitle(slide, sl.title || 'Cost Analysis');
+            if (!fs) { renderDeckChart(slide, sl, null); break; }
+            slide.addChart('bar', [
+              { name: 'People costs', labels: YEAR_LABELS, values: fs.salaries.map(toM) },
+              { name: 'Other operating costs', labels: YEAR_LABELS, values: fs.opex.map(toM) },
+            ], { x: 0.5, y: 1.0, w: 5.6, h: 3.5, ...chartBase, barDir: 'col', barGrouping: 'stacked', chartColors: [DECK.navy, DECK.accent], valAxisLabelFormatCode: '$0.0"M"', showLegend: true, legendPos: 'b' });
+            const peopleShare = fs.totalCosts[0] ? fs.salaries[0] / fs.totalCosts[0] : 0;
+            deckStatColumn(slide, [
+              { value: fmtMoney(fs.totalCosts[0]), label: `Year 1 operating costs → ${fmtMoney(fs.totalCosts[4])} by Year 5` },
+              { value: `${Math.round(peopleShare * 100)}%`, label: 'of Year 1 costs are people' },
+            ], 6.3, 3.2);
+            const top = [...(fs.costCategories || [])].sort((a, b) => b.values[0] - a.values[0]).slice(0, 3);
+            if (top.length) {
+              slide.addTable([
+                [{ text: 'Largest other costs', options: { bold: true, color: DECK.white, fill: { color: DECK.navy } } }, { text: 'Year 1', options: { bold: true, color: DECK.white, fill: { color: DECK.navy } } }],
+                ...top.map(c => [{ text: c.name }, { text: fmtMoney(c.values[0]) }]),
+              ], { x: 6.3, y: 3.35, w: 3.2, colW: [2.2, 1.0], fontFace: DECK.bodyFont, fontSize: 9, color: DECK.body, border: { type: 'solid', pt: 0.5, color: 'E2E2E2' }, margin: 0.04, autoPage: false });
+            }
+            deckTakeaway(slide, sl.takeaway);
+            break;
+          }
+          case 'roadmap': {
+            deckTitle(slide, sl.title || 'Milestones');
+            const items = sl.items || [];
+            const step = 8.6 / Math.max(1, items.length);
+            slide.addShape('line', { x: 0.7, y: 2.2, w: 8.6, h: 0, line: { color: DECK.accent, width: 3 } });
+            items.forEach((it, i) => {
+              const cx = 0.7 + step * i + step / 2;
+              slide.addShape('ellipse', { x: cx - 0.13, y: 2.07, w: 0.26, h: 0.26, fill: { color: i === 0 ? DECK.accent : DECK.navy }, line: { color: DECK.white, width: 2 } });
+              slide.addText(it.when, { x: cx - step / 2, y: 1.45, w: step, h: 0.45, fontFace: DECK.bodyFont, fontSize: 12, bold: true, color: DECK.accent, align: 'center', fit: 'shrink' });
+              slide.addShape('rect', { x: cx - step / 2 + 0.06, y: 2.55, w: step - 0.12, h: 1.9, fill: { color: DECK.card }, line: { color: DECK.card } });
+              slide.addText(it.milestone, { x: cx - step / 2 + 0.12, y: 2.6, w: step - 0.24, h: 1.8, fontFace: DECK.bodyFont, fontSize: 10.5, color: DECK.body, valign: 'top', fit: 'shrink' });
             });
             break;
           }

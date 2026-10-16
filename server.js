@@ -15,8 +15,10 @@ const app = express();
 // Milestone requests carry the research fact base and earlier milestones' summaries.
 app.use(express.json({ limit: '2mb' }));
 
+// Keys pasted into a hosting dashboard often pick up a trailing newline or quotes, which
+// the API rejects as an invalid key.
 const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: (process.env.ANTHROPIC_API_KEY || '').trim().replace(/^["']|["']$/g, ''),
 });
 
 const SENIOR_VOICE = `You are a strategy consultant with 18 years of experience across market entry, growth strategy and fundraising. You write like a senior partner: specific, numeric where possible, decisive, never vague. You never write generic AI filler. Every claim is concrete. You use the client's own facts from their brief wherever possible.`;
@@ -53,7 +55,7 @@ const MILESTONE_FOCUS = {
   beachhead: `Cover, at minimum: 2-3 candidate beachhead segments compared head-to-head on reachability, willingness to pay, competitive intensity, and expansion potential (a markdown comparison table works well here); a decisive recommendation on the single best beachhead; and the specific wedge strategy to win it.`,
   entry: `Cover, at minimum: the recommended entry sequence (channel-by-channel or region-by-region), the rationale for that sequence, go-to-market motion (sales-led, PLG, partnerships, etc.), and the first 90 days of concrete entry actions.`,
   financial: `Cover, at minimum, as "## " sub-sections: "## Market Sizing" (explain how TAM/SAM/SOM were derived, then put the placeholder line [[MARKET_SIZE_TABLE]] on its own line), "## Revenue Model" (pricing, ACV build and customer ramp), "## Five-Year Projections" (put [[FINANCIAL_PROJECTIONS_TABLE]] on its own line, then interpret it), "## Unit Economics" (put [[UNIT_ECONOMICS_TABLE]] on its own line, then interpret it), and "## Funding Needs" (the raise, runway and the milestones it buys). Every number must come from the FINANCIAL MODEL figures provided.`,
-  pitch: `Cover, at minimum: a slide-by-slide narrative outline (problem, solution, market, traction, business model, competition, team, financials, ask), with the specific proof points and numbers this client should lead with on each slide — the client also receives a companion PowerPoint deck built from the same figures.`,
+  pitch: `Cover, as "## " sub-sections in this order, adapted to the client's industry and stage: Mission & Vision; About Us; Problem & Solution; Target Customers; Market Opportunity; Competitors; Business Model; Marketing Strategy; Cost Analysis; Profit Analysis; Milestones (traction if the brief shows it, otherwise the validation-to-launch roadmap — never invented traction); Funding. For each, give the slide's headline message, the proof points and exact numbers to lead with, and what an investor will challenge — the client also receives a companion PowerPoint deck built on the same structure and figures.`,
   execbrief: `Cover, at minimum: a synthesis of every prior milestone into the 3-5 decisions that matter most, each with its supporting evidence, so a time-constrained reader gets the whole strategy without reading the underlying reports.`,
 };
 
@@ -168,6 +170,9 @@ function readContext(body) {
 function sendError(res, err, fallback) {
   console.error(`${fallback}:`, err?.message);
   if (err instanceof RefusalError) return res.status(422).json({ error: err.message });
+  if (err instanceof Anthropic.AuthenticationError) {
+    return res.status(502).json({ error: "The server's Anthropic API key was rejected. Update ANTHROPIC_API_KEY in the hosting settings (Vercel → Settings → Environment Variables) with a valid key from console.anthropic.com, then redeploy." });
+  }
   if (err instanceof Anthropic.RateLimitError) return res.status(429).json({ error: 'The AI service is busy right now. Wait a minute and try again.' });
   if (err instanceof Anthropic.APIError && err.status) {
     return res.status(err.status >= 500 ? 502 : err.status).json({ error: err.message || fallback });
@@ -640,18 +645,56 @@ Sizing guidance:
   }
 });
 
-const DECK_SLIDE_TYPES = new Set(['title', 'section', 'cards', 'bigNumbers', 'bullets', 'table', 'chart', 'unitEconomics', 'marketSize', 'ask', 'closing']);
+const DECK_SLIDE_TYPES = new Set([
+  'title', 'section', 'missionVision', 'about', 'problemSolution', 'targetCustomers', 'competitors', 'marketing',
+  'costAnalysis', 'roadmap', 'cards', 'bigNumbers', 'bullets', 'table', 'chart', 'unitEconomics', 'marketSize', 'ask', 'closing',
+]);
 const DECK_CHARTS = new Set(['arr', 'pnl', 'cash', 'headcount']);
 
 function sanitizeDeck(raw) {
   const s = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
   const list = (v, n) => (Array.isArray(v) ? v.slice(0, n) : []);
-  const slides = list(raw?.slides, 24).map(sl => {
+  const pairs = (v, n, a, b, la, lb) => list(v, n).map(x => ({ [a]: s(x?.[a], la), [b]: s(x?.[b], lb) })).filter(x => x[a] && x[b]);
+  const slides = list(raw?.slides, 26).map(sl => {
     if (!sl || !DECK_SLIDE_TYPES.has(sl.type)) return null;
     const out = { type: sl.type, title: s(sl.title, 110) };
     switch (sl.type) {
       case 'title': out.subtitle = s(sl.subtitle, 160); break;
       case 'section': out.number = s(sl.number, 4); break;
+      case 'missionVision':
+        out.mission = s(sl.mission, 220);
+        out.vision = s(sl.vision, 220);
+        out.values = list(sl.values, 4).map(v => s(v, 60)).filter(Boolean);
+        break;
+      case 'about':
+        out.summary = s(sl.summary, 420);
+        out.facts = pairs(sl.facts, 6, 'label', 'value', 30, 80);
+        break;
+      case 'problemSolution':
+        out.problems = pairs(sl.problems, 3, 'headline', 'detail', 60, 170);
+        out.solutions = pairs(sl.solutions, 3, 'headline', 'detail', 60, 170);
+        break;
+      case 'targetCustomers':
+        out.segments = list(sl.segments, 4)
+          .map(g => ({ name: s(g?.name, 50), profile: s(g?.profile, 150), pain: s(g?.pain, 130), size: s(g?.size, 50) }))
+          .filter(g => g.name && g.profile);
+        out.beachhead = s(sl.beachhead, 200);
+        break;
+      case 'competitors':
+        out.competitors = list(sl.competitors, 6)
+          .map(c => ({ name: s(c?.name, 40), positioning: s(c?.positioning, 80), pricing: s(c?.pricing, 50), weakness: s(c?.weakness, 90) }))
+          .filter(c => c.name);
+        out.advantage = s(sl.advantage, 220);
+        break;
+      case 'marketing':
+        out.channels = list(sl.channels, 5)
+          .map(c => ({ channel: s(c?.channel, 40), tactic: s(c?.tactic, 140), kpi: s(c?.kpi, 60) }))
+          .filter(c => c.channel && c.tactic);
+        out.callout = s(sl.callout, 200);
+        break;
+      case 'roadmap':
+        out.items = pairs(sl.items, 6, 'when', 'milestone', 24, 130);
+        break;
       case 'cards': out.cards = list(sl.cards, 4).map(c => ({ label: s(c?.label, 40), text: s(c?.text, 260) })).filter(c => c.label && c.text); break;
       case 'bigNumbers':
         out.stats = list(sl.stats, 4).map(st => ({ value: s(st?.value, 14), label: s(st?.label, 90) })).filter(st => st.value);
@@ -666,7 +709,7 @@ function sanitizeDeck(raw) {
         out.rows = list(sl.rows, 7).map(r => list(r, out.columns.length).map(c => s(String(c ?? ''), 70)));
         break;
       case 'chart': out.chart = DECK_CHARTS.has(sl.chart) ? sl.chart : 'arr'; out.takeaway = s(sl.takeaway, 200); break;
-      case 'unitEconomics': case 'marketSize': out.takeaway = s(sl.takeaway, 200); break;
+      case 'unitEconomics': case 'marketSize': case 'costAnalysis': out.takeaway = s(sl.takeaway, 200); break;
       case 'ask':
         out.useOfFunds = list(sl.useOfFunds, 6).map(u => ({ label: s(u?.label, 50), pct: Math.max(0, Math.min(100, Number(u?.pct) || 0)) })).filter(u => u.label);
         out.milestones = list(sl.milestones, 5).map(m => s(m, 140)).filter(Boolean);
@@ -676,6 +719,25 @@ function sanitizeDeck(raw) {
     return out;
   }).filter(Boolean);
   return { companyName: s(raw?.companyName, 60), tagline: s(raw?.tagline, 90), slides };
+}
+
+// What the deck should emphasise at each stage the intake offers. Early-stage decks must
+// never invent traction; later-stage decks lead with it.
+function deckStageGuidance(stage) {
+  const st = String(stage || '').toLowerCase();
+  if (st.startsWith('idea') || st.startsWith('pre-revenue')) {
+    return `STAGE (${stage}): this is a pre-revenue deck. Do NOT claim customers, revenue or users the brief doesn't state. Replace a traction slide with a "roadmap" titled around validation and launch (customer discovery, MVP, pilot, first revenue), and use any validation evidence in the brief (interviews, LOIs, waitlists, pilots). The ask is pre-seed/seed money to reach those milestones; lean on the problem, the team's edge and the plan.`;
+  }
+  if (st.startsWith('early revenue') || st.startsWith('growing')) {
+    return `STAGE (${stage}): include a "bigNumbers" traction slide right after Problem & Solution, using ONLY figures stated in the brief (revenue, customers, growth, retention) — never invented ones; if the brief gives none, describe traction qualitatively in a "bullets" slide instead. Follow it later with a "roadmap" of the next 18-24 months.`;
+  }
+  if (st.startsWith('scaling')) {
+    return `STAGE (${stage}): lead with scale. Include a "bigNumbers" traction slide (figures from the brief only), emphasise unit economics and expansion (new geographies/segments) in the roadmap, and frame the raise as growth capital.`;
+  }
+  if (st.startsWith('plateau')) {
+    return `STAGE (${stage}): this is a turnaround deck. After Problem & Solution add a "bullets" slide on what stalled growth and what changes now, make the roadmap a turnaround plan with dated milestones, and tie the ask to that plan.`;
+  }
+  return `STAGE (${stage || 'not stated'}): if the brief shows traction, add a "bigNumbers" traction slide using only stated figures; otherwise use a "roadmap" toward first revenue.`;
 }
 
 // Generate the pitch deck as a typed slide plan; the browser renders it to PPTX. Financial
@@ -689,7 +751,7 @@ app.post('/api/generate-pitch-deck', async (req, res) => {
 
     const ctx = readContext(req.body);
 
-    const instructions = `TASK: Write the content for this client's investor pitch deck (16:9, 15-20 slides), in the style of a sharp strategy-firm deck: every slide title is a conclusion, not a topic (e.g. "Competitor Landscape: 17 Players, One Massive Gap"), and every slide carries specific numbers and names.${notesBlock(notes)}
+    const instructions = `TASK: Write the content for this client's investor pitch deck (16:9, 16-20 slides), in the style of a sharp strategy-firm deck: every slide title is a conclusion, not a topic (e.g. "Competitors: 17 Players, None Built for Halal Processors"), and every slide carries specific numbers and names from this client's world.${notesBlock(notes)}
 
 Respond with ONLY JSON (no markdown):
 {"companyName": "the client's business name (short)", "tagline": "what they are, in under 8 words",
@@ -697,19 +759,51 @@ Respond with ONLY JSON (no markdown):
 
 Slide object types — use only these:
 - {"type": "title", "title": "company name", "subtitle": "one-line positioning + 'Investor Presentation'"}
-- {"type": "section", "number": "01", "title": "Market & Competition"}
-- {"type": "cards", "title": "...", "cards": [{"label": "The Opportunity", "text": "2 sentences max"}]}  (2-4 cards)
-- {"type": "bigNumbers", "title": "...", "stats": [{"value": "$7B", "label": "short label with year/source"}], "note": "one sentence"}  (2-4 stats, values under 8 characters)
-- {"type": "bullets", "title": "...", "bullets": ["one sentence each"], "callout": "the one-line takeaway"}  (3-5 bullets)
-- {"type": "table", "title": "...", "columns": ["..."], "rows": [["..."]]}  (max 5 columns, 7 rows, short cells)
+- {"type": "missionVision", "title": "...", "mission": "one sentence: what we do, for whom, why", "vision": "one sentence: the world we are building in 5-10 years", "values": ["2-4 short operating principles"]}
+- {"type": "about", "title": "About Us: ...", "summary": "2-3 sentences on who we are and what we have built so far", "facts": [{"label": "Founded", "value": "..."}, {"label": "Stage", "value": "..."}, {"label": "Headquarters", "value": "..."}, {"label": "Team", "value": "..."}, {"label": "Focus market", "value": "..."}]}  (4-6 facts, only ones the brief supports or that are clearly plans)
+- {"type": "problemSolution", "title": "...", "problems": [{"headline": "short", "detail": "one sentence with a number"}], "solutions": [{"headline": "short", "detail": "one sentence: how we solve the matching problem"}]}  (2-3 of each, in matching order)
+- {"type": "targetCustomers", "title": "...", "segments": [{"name": "segment", "profile": "who they are", "pain": "what hurts", "size": "how many / how big"}], "beachhead": "which segment we win first and why"}  (2-4 segments)
 - {"type": "marketSize", "title": "...", "takeaway": "one sentence"}  (TAM/SAM/SOM drawn automatically from the model)
+- {"type": "competitors", "title": "...", "competitors": [{"name": "...", "positioning": "...", "pricing": "...", "weakness": "the gap we exploit"}], "advantage": "our defensible edge in one sentence"}  (3-6 competitors, verified ones first)
+- {"type": "cards", "title": "...", "cards": [{"label": "...", "text": "2 sentences max"}]}  (2-4 cards)
+- {"type": "marketing", "title": "Marketing Strategy: ...", "channels": [{"channel": "...", "tactic": "what exactly we do there", "kpi": "how we measure it"}], "callout": "the one-line go-to-market thesis"}  (3-5 channels)
+- {"type": "costAnalysis", "title": "Cost Analysis: ...", "takeaway": "one sentence"}  (cost build-up and largest cost lines drawn automatically from the model)
 - {"type": "chart", "chart": "arr" | "pnl" | "cash" | "headcount", "title": "...", "takeaway": "one sentence"}  (chart data drawn automatically from the model)
 - {"type": "unitEconomics", "title": "...", "takeaway": "one sentence"}  (figures drawn automatically from the model)
-- {"type": "ask", "title": "...", "useOfFunds": [{"label": "Product & Engineering", "pct": 40}], "milestones": ["what this raise achieves"]}  (shares sum to 100)
-- {"type": "closing", "title": "Next Steps", "points": ["..."]}
+- {"type": "bigNumbers", "title": "...", "stats": [{"value": "$7B", "label": "short label with year/source"}], "note": "one sentence"}  (2-4 stats, values under 8 characters)
+- {"type": "roadmap", "title": "...", "items": [{"when": "Q1 2027", "milestone": "what is achieved"}]}  (3-6 dated milestones)
+- {"type": "bullets", "title": "...", "bullets": ["one sentence each"], "callout": "the one-line takeaway"}  (3-5 bullets)
+- {"type": "table", "title": "...", "columns": ["..."], "rows": [["..."]]}  (max 5 columns, 7 rows, short cells)
+- {"type": "ask", "title": "Funding: ...", "useOfFunds": [{"label": "Product & Engineering", "pct": 40}], "milestones": ["what this raise achieves"]}  (shares sum to 100)
+- {"type": "closing", "title": "...", "points": ["..."]}
+- {"type": "section", "number": "01", "title": "..."}  (optional divider; use at most 3)
 
-Required running order: title; an executive-summary "cards" slide (The Opportunity / Our Position / The Numbers / The Ask); section 01 Market & Competition (the problem, customer insight, a competitor "table", "marketSize"); section 02 Strategy & Product (beachhead choice, product, go-to-market); section 03 Financial Model ("chart" arr, "chart" pnl, "unitEconomics", "chart" headcount); section 04 Funding ("ask", "chart" cash); a key risks & mitigants "table"; "closing".
-Any number you put in a title, card, stat or table must match the FINANCIAL MODEL figures or carry an [S#] citation from the fact base; otherwise mark it "(est.)". Keep text tight — slides, not paragraphs.`;
+Required running order — every client gets these, adapted to their industry and stage:
+1. "title"
+2. "missionVision" — Mission & Vision
+3. "about" — About Us
+4. "problemSolution" — Problem & Solution
+5. "targetCustomers" — Target Customers
+6. "marketSize" — Market Opportunity
+7. "competitors" — Competitors
+8. "cards" — Business Model: how we make money (revenue streams, pricing, why customers pay), consistent with the model's ACV
+9. "marketing" — Marketing Strategy
+10. "costAnalysis" — Cost Analysis
+11. "chart" arr — Revenue Projections
+12. "chart" pnl — Profit Analysis (when we break even and why)
+13. "unitEconomics" — Unit Economics
+14. "chart" headcount — Team & Hiring Plan
+15. "roadmap" — Milestones (see STAGE below)
+16. "ask" — Funding
+17. "chart" cash — Runway (how the raise covers the funding gap)
+18. "table" — Key Risks & Mitigants (columns: Risk | Likelihood | Mitigation)
+19. "closing" — Why now / next steps
+
+${deckStageGuidance(intake.stage)}
+
+INDUSTRY (${intake.industry}): add ONE extra slide where it matters for this industry — e.g. regulation & compliance (healthcare, fintech, food, pharma), technology & IP (deep tech, AI), supply chain & operations (manufacturing, logistics, retail), partnerships & network effects (marketplaces) — as "bullets" or "cards", placed where it fits the story. Use industry-standard terms and metrics for ${intake.industry} throughout.
+
+Any number you put in a title, card, stat, segment or table must match the FINANCIAL MODEL figures or carry an [S#] citation from the fact base; otherwise mark it "(est.)". Keep text tight — slides, not paragraphs.`;
 
     const result = await runClaude(client, {
       maxTokens: 12000,
