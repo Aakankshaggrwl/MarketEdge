@@ -79,11 +79,14 @@ test('full engagement: consent, research, chained milestones, plan, deck and str
   expect(deckDl.suggestedFilename()).toBe('Test-Co-Pitch-Deck.pptx');
   const zip = await JSZip.loadAsync(await readDownload(deckDl));
   const slides = Object.keys(zip.files).filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f));
-  expect(slides).toHaveLength(16); // 15 planned slides + Sources
+  expect(slides).toHaveLength(21); // 20 planned slides + Sources
   expect(Object.keys(zip.files).filter(f => /^ppt\/charts\/chart\d+\.xml$/.test(f)).length).toBeGreaterThanOrEqual(5);
   const allText = (await Promise.all(slides.map(s => zip.file(s).async('string')))).join(' ');
   expect(allText).toContain('$18.00M'); // Year 5 ARR, drawn from the model
   expect(allText).toContain('GCC Food AI Market Report 2026');
+  for (const heading of ['OUR MISSION', 'OUR VISION', 'THE PROBLEM', 'OUR SOLUTION', 'Halal processors', 'Gap We Exploit', 'KPI: 30% conversion', 'of Year 1 costs are people', 'Largest other costs', 'Q3 2027']) {
+    expect(allText).toContain(heading);
+  }
 
   // Strategy Book + follow-up booking on the completion screen.
   await sidebarStep(page, 'Strategy Book').click();

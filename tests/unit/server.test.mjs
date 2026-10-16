@@ -197,6 +197,55 @@ test('pitch deck is sanitized to known slide types', async () => {
   assert.equal(body.deck.slides[4].useOfFunds[0].pct, 100);
 });
 
+test('pitch deck follows the investor structure and adapts to stage and industry', async () => {
+  const start = mock.requests.length;
+  respond = () => textMessage(JSON.stringify({
+    companyName: 'Drizzla', tagline: 'AI food cloud',
+    slides: [
+      { type: 'missionVision', title: 'Mission & Vision', mission: 'M', vision: 'V', values: ['a', 'b', 'c', 'd', 'e'] },
+      { type: 'about', title: 'About', summary: 'S', facts: [{ label: 'Stage', value: 'Idea' }, { label: 'Bad' }] },
+      { type: 'problemSolution', title: 'P&S', problems: [{ headline: 'h', detail: 'd' }], solutions: [{ headline: 'h', detail: 'd' }] },
+      { type: 'targetCustomers', title: 'Customers', segments: [{ name: 'Seg', profile: 'p', pain: 'x', size: '10' }, { name: 'NoProfile' }], beachhead: 'Seg' },
+      { type: 'competitors', title: 'Comp', competitors: [{ name: 'Rival', positioning: 'p', pricing: '$1', weakness: 'w' }], advantage: 'edge' },
+      { type: 'marketing', title: 'Mkt', channels: [{ channel: 'SEO', tactic: 't', kpi: 'k' }, { channel: 'Empty' }], callout: 'c' },
+      { type: 'costAnalysis', title: 'Costs', takeaway: 't' },
+      { type: 'roadmap', title: 'Road', items: [{ when: 'Q1', milestone: 'm' }, { when: 'Q2' }] },
+    ],
+  }));
+  const { status, body } = await post('/api/generate-pitch-deck', { sow, intake: { ...intake, stage: 'Idea stage', industry: 'Healthcare' }, research, financialSummary: { ...financialSummary, salaries: [1, 2, 3, 4, 5], opex: [1, 1, 1, 1, 1], costCategories: [{ name: 'Cloud', values: [9, 9, 9, 9, 9] }] } });
+  assert.equal(status, 200, JSON.stringify(body));
+  const byType = Object.fromEntries(body.deck.slides.map(sl => [sl.type, sl]));
+  assert.equal(byType.missionVision.values.length, 4);
+  assert.deepEqual(byType.about.facts, [{ label: 'Stage', value: 'Idea' }]);
+  assert.equal(byType.targetCustomers.segments.length, 1);
+  assert.equal(byType.marketing.channels.length, 1);
+  assert.equal(byType.roadmap.items.length, 1);
+  assert.equal(byType.costAnalysis.takeaway, 't');
+
+  const prompt = mock.requests[start].messages[0].content[1].text;
+  for (const step of ['"missionVision" — Mission & Vision', '"about" — About Us', '"problemSolution" — Problem & Solution', '"targetCustomers" — Target Customers', '"competitors" — Competitors', '"marketing" — Marketing Strategy', '"costAnalysis" — Cost Analysis', '"chart" pnl — Profit Analysis', '"ask" — Funding']) {
+    assert.ok(prompt.includes(step), `missing ${step}`);
+  }
+  assert.match(prompt, /pre-revenue deck. Do NOT claim customers/);
+  assert.match(prompt, /INDUSTRY \(Healthcare\)/);
+  assert.match(prompt, /of which people costs \| \$1 \|/);
+  assert.match(prompt, /Largest non-salary cost categories .*Cloud/);
+});
+
+test('deck stage guidance asks growing companies for real traction only', async () => {
+  const start = mock.requests.length;
+  respond = () => textMessage(JSON.stringify({ slides: Array.from({ length: 6 }, () => ({ type: 'closing', title: 'x', points: ['y'] })) }));
+  await post('/api/generate-pitch-deck', { sow, intake: { ...intake, stage: 'Growing ($100K–$1M)' } });
+  assert.match(mock.requests[start].messages[0].content[1].text, /traction slide .* using ONLY figures stated in the brief/);
+});
+
+test('an invalid API key gets an actionable message', async () => {
+  respond = () => ({ httpError: { status: 401, error: { type: 'authentication_error', message: 'invalid x-api-key' } } });
+  const { status, body } = await post('/api/generate-milestone-report', { milestoneKey: 'pitch', milestoneName: 'Pitch Deck', sow, intake });
+  assert.equal(status, 502);
+  assert.match(body.error, /ANTHROPIC_API_KEY/);
+});
+
 test('a refusal becomes a readable 422', async () => {
   respond = () => ({ content: [{ type: 'text', text: '' }], stop_reason: 'refusal' });
   const { status, body } = await post('/api/generate-milestone-report', { milestoneKey: 'customer', milestoneName: 'Customer Analysis', sow, intake });
