@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { repairTruncatedJSON, safeParseJSON } from '../../lib/json.js';
+import { repairTruncatedJSON, repairInnerQuotes, safeParseJSON } from '../../lib/json.js';
 import { truncateToWordLimit, parseTextReport, parseKeyValueLines } from '../../lib/report.js';
 import { addApiUsage, emptyUsage, usageCostUSD, finalizeUsage } from '../../lib/cost.js';
 import { normalizeUrl, collectSearchSources, buildResearch, sanitizeResearch, formatFactBase } from '../../lib/research.js';
@@ -21,6 +21,26 @@ test('repairTruncatedJSON drops a dangling key', () => {
 test('safeParseJSON tolerates code fences and leading prose', () => {
   assert.deepEqual(safeParseJSON('```json\n{"a":1}\n```'), { a: 1 });
   assert.deepEqual(safeParseJSON('Based on my research, here it is: {"a":2}'), { a: 2 });
+});
+
+test('safeParseJSON repairs unescaped quotes inside text values', () => {
+  // The shape that produced "Expected ',' or '}' after property value": a rationale quoting the brief.
+  const bad = '{"engagement_summary": "They want "10 clients by Q2", fast.","milestones": [{"key":"customer","name":"Customer Analysis","rationale":"Their brief says "premium only" and lists "x", "y" as rivals: "z".\nSecond line."}],"tags": ["a "b" c", "d"]}';
+  assert.throws(() => JSON.parse(bad), /Expected ',' or '}' after property value/);
+  const parsed = safeParseJSON(bad);
+  assert.equal(parsed.engagement_summary, 'They want "10 clients by Q2", fast.');
+  assert.equal(parsed.milestones[0].rationale, 'Their brief says "premium only" and lists "x", "y" as rivals: "z".\nSecond line.');
+  assert.deepEqual(parsed.tags, ['a "b" c', 'd']);
+});
+
+test('repairInnerQuotes leaves valid JSON unchanged', () => {
+  const valid = JSON.stringify({ a: 'he said \"hi\"', b: [1, 'x', { c: null }], d: true });
+  assert.equal(repairInnerQuotes(valid), valid);
+});
+
+test('safeParseJSON repairs inner quotes in a reply that was also cut off', () => {
+  const parsed = safeParseJSON('{"a":[{"b":"x "q" y"},{"b":"cut off');
+  assert.equal(parsed.a[0].b, 'x "q" y');
 });
 
 test('truncateToWordLimit caps words and balances bold markers', () => {

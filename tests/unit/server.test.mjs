@@ -267,6 +267,51 @@ test('sow returns usage', async () => {
   assert.equal(body.usage.outputTokens, 50);
 });
 
+test('sow asks for structured output constrained to the milestone catalog', async () => {
+  respond = () => textMessage(JSON.stringify({ engagement_summary: 'S', milestones: [{ key: 'customer', name: 'Customer Analysis', rationale: 'r' }] }));
+  await post('/api/generate-sow', { brief: 'x', industry: 'y', stage: 'z', market: 'India', goal: 'g' });
+  const format = mock.requests.at(-1).output_config.format;
+  assert.equal(format.type, 'json_schema');
+  assert.deepEqual(format.schema.required, ['engagement_summary', 'milestones']);
+  assert.ok(format.schema.properties.milestones.items.properties.key.enum.includes('bizplan'));
+});
+
+test('a malformed JSON reply is retried once and usage covers both attempts', async () => {
+  const good = JSON.stringify({ engagement_summary: 'S', milestones: [{ key: 'customer', name: 'Customer Analysis', rationale: 'r' }] });
+  const start = mock.requests.length;
+  respond = (body, i) => textMessage(i === start ? '{"engagement_summary": "S", "milestones": [{"key": oops' + '}'.repeat(3) + ']' : good);
+  const { status, body } = await post('/api/generate-sow', { brief: 'x', industry: 'y', stage: 'z', market: 'India', goal: 'g' });
+  assert.equal(status, 200);
+  assert.equal(mock.requests.length - start, 2);
+  assert.equal(body.usage.outputTokens, 100);
+});
+
+test('a reply that stays unreadable returns a clear error', async () => {
+  respond = () => textMessage('{"milestones": [nope nope');
+  const { status, body } = await post('/api/generate-competitor-matrix', { milestoneName: 'Competitor Landscape', sow, intake });
+  assert.equal(status, 500);
+  assert.match(body.error, /couldn't be read.*try again/i);
+});
+
+test('if the API rejects the output schema, the request is retried without it', async () => {
+  const start = mock.requests.length;
+  respond = (body) => body.output_config
+    ? { httpError: { status: 400, error: { type: 'invalid_request_error', message: 'output_config.format.schema: unsupported' } } }
+    : textMessage(JSON.stringify({ engagement_summary: 'S', milestones: [{ key: 'customer', name: 'Customer Analysis', rationale: 'r' }] }));
+  const { status } = await post('/api/generate-sow', { brief: 'x', industry: 'y', stage: 'z', market: 'India', goal: 'g' });
+  assert.equal(status, 200);
+  assert.equal(mock.requests.length - start, 2);
+  assert.equal(mock.requests.at(-1).output_config, undefined);
+});
+
+test('sow revision returns the revised scope', async () => {
+  respond = () => textMessage(JSON.stringify({ engagement_summary: 'S2', milestones: [{ key: 'gap', name: 'Gap & Opportunity Analysis', rationale: 'r' }], changes_made: 'Added gap.' }));
+  const { status, body } = await post('/api/sow-interaction', { userMessage: 'add gap', sow: { engagement_summary: 'S', milestones: [{ key: 'customer', name: 'Customer Analysis', rationale: 'r' }] }, intake, interactionType: 'revision' });
+  assert.equal(status, 200);
+  assert.equal(body.sow.changes_made, 'Added gap.');
+  assert.ok(mock.requests.at(-1).output_config.format.schema.required.includes('changes_made'));
+});
+
 test('config and client error logging endpoints', async () => {
   const cfg = await (await fetch(base + '/api/config')).json();
   assert.equal(cfg.bookingUrl, 'https://cal.example.com/marketedge');
