@@ -142,7 +142,7 @@ test('business plan request carries fact base, prior milestones and model figure
   assert.match(variable.text, /EBITDA break-even in Year 3/);
   assert.match(variable.text, /MARKET_OPPORTUNITY/);
   assert.match(req.system, /never invent a source/i);
-  assert.equal(req.max_tokens, 20000);
+  assert.equal(req.max_tokens, 21000);
 });
 
 test('shared prompt block is byte-identical across milestones so it can be cached', async () => {
@@ -191,10 +191,11 @@ test('pitch deck is sanitized to known slide types', async () => {
   }));
   const { status, body } = await post('/api/generate-pitch-deck', { sow, intake, research, financialSummary });
   assert.equal(status, 200);
-  assert.deepEqual(body.deck.slides.map(s => s.type), ['title', 'cards', 'chart', 'table', 'ask', 'closing']);
-  assert.equal(body.deck.slides[2].chart, 'arr');
-  assert.deepEqual(body.deck.slides[3].rows[0], ['A', 'B']);
-  assert.equal(body.deck.slides[4].useOfFunds[0].pct, 100);
+  // A TAM / SAM / SOM slide is added when the model leaves it out.
+  assert.deepEqual(body.deck.slides.map(s => s.type), ['title', 'marketSize', 'cards', 'chart', 'table', 'ask', 'closing']);
+  assert.equal(body.deck.slides[3].chart, 'arr');
+  assert.deepEqual(body.deck.slides[4].rows[0], ['A', 'B']);
+  assert.equal(body.deck.slides[5].useOfFunds[0].pct, 100);
 });
 
 test('pitch deck follows the investor structure and adapts to stage and industry', async () => {
@@ -310,6 +311,46 @@ test('sow revision returns the revised scope', async () => {
   assert.equal(status, 200);
   assert.equal(body.sow.changes_made, 'Added gap.');
   assert.ok(mock.requests.at(-1).output_config.format.schema.required.includes('changes_made'));
+});
+
+test('every report ends with a whole-report summary, returned separately from the sections', async () => {
+  const start = mock.requests.length;
+  respond = () => textMessage('TITLE: Gap Analysis\n---SECTION---\nEXECUTIVE_SUMMARY: The summary.\n---SECTION---\nKEY_FINDINGS: ### One\n\nA finding.\n---SECTION---\nREPORT_SUMMARY: BOTTOM LINE: Own the halal gap.\n- **Market:** $775M [S1]\n- **Risk:** slow sales\nNEXT STEP: Interview 10 processors.');
+  const { status, body } = await post('/api/generate-milestone-report', { milestoneKey: 'gap', milestoneName: 'Gap Analysis', sow, intake, research });
+  assert.equal(status, 200);
+  assert.deepEqual(body.report.sections.map(s => s.heading), ['Executive Summary', 'Key Findings']);
+  assert.deepEqual(body.report.summary, { bottomLine: 'Own the halal gap.', points: ['**Market:** $775M [S1]', '**Risk:** slow sales'], nextStep: 'Interview 10 processors.' });
+  const prompt = mock.requests[start].messages[0].content[1].text;
+  assert.match(prompt, /REPORT_SUMMARY: \[Write this LAST/);
+  assert.match(prompt, /Phase \| Timeline \| Key Actions \| Owner \| Success Measure/);
+});
+
+test('the executive brief asks for a dedicated action roadmap', async () => {
+  const start = mock.requests.length;
+  respond = () => textMessage('TITLE: Executive Brief\n---SECTION---\nEXECUTIVE_SUMMARY: x');
+  await post('/api/generate-milestone-report', { milestoneKey: 'execbrief', milestoneName: 'Executive Brief', sow, intake });
+  const prompt = mock.requests[start].messages[0].content[1].text;
+  assert.match(prompt, /ACTION_ROADMAP: \[/);
+  assert.doesNotMatch(prompt, /IMPLEMENTATION_ROADMAP/);
+});
+
+test('additional intake context reaches the scope and every report', async () => {
+  const start = mock.requests.length;
+  respond = () => textMessage(JSON.stringify({ engagement_summary: 'S', milestones: [{ key: 'customer', name: 'Customer Analysis', rationale: 'r' }] }));
+  await post('/api/generate-sow', { brief: 'x', industry: 'y', stage: 'z', market: 'India', goal: 'g', additional: '3 pilots underway' });
+  assert.match(mock.requests[start].messages[0].content, /Additional context from the client: 3 pilots underway/);
+  respond = () => textMessage('TITLE: T\n---SECTION---\nEXECUTIVE_SUMMARY: x');
+  await post('/api/generate-milestone-report', { milestoneKey: 'customer', milestoneName: 'Customer Analysis', sow, intake: { ...intake, additional: '3 pilots underway' } });
+  assert.match(mock.requests.at(-1).messages[0].content[0].text, /Additional context from the client: 3 pilots underway/);
+});
+
+test('market size slide keeps the TAM / SAM / SOM definitions', async () => {
+  respond = () => textMessage(JSON.stringify({ companyName: 'X', slides: [{ type: 'title', title: 'X' }, { type: 'marketSize', title: 'M', tamBasis: 'All GCC food plants', samBasis: 'Halal processors', somBasis: 'Our ARR', takeaway: 't' }, { type: 'closing', title: 'c', points: ['p'] }, { type: 'cards', title: 'c', cards: [{ label: 'a', text: 'b' }] }, { type: 'bullets', title: 'b', bullets: ['x'] }] }));
+  const { body } = await post('/api/generate-pitch-deck', { sow, intake });
+  const ms = body.deck.slides.filter(s => s.type === 'marketSize');
+  assert.equal(ms.length, 1);
+  assert.equal(ms[0].tamBasis, 'All GCC food plants');
+  assert.equal(ms[0].somBasis, 'Our ARR');
 });
 
 test('config and client error logging endpoints', async () => {

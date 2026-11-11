@@ -82,7 +82,7 @@ const MILESTONE_FOCUS = {
   entry: `Cover, at minimum: the recommended entry sequence (channel-by-channel or region-by-region), the rationale for that sequence, go-to-market motion (sales-led, PLG, partnerships, etc.), and the first 90 days of concrete entry actions.`,
   financial: `Cover, at minimum, as "## " sub-sections: "## Market Sizing" (explain how TAM/SAM/SOM were derived, then put the placeholder line [[MARKET_SIZE_TABLE]] on its own line), "## Revenue Model" (pricing, ACV build and customer ramp), "## Five-Year Projections" (put [[FINANCIAL_PROJECTIONS_TABLE]] on its own line, then interpret it), "## Unit Economics" (put [[UNIT_ECONOMICS_TABLE]] on its own line, then interpret it), and "## Funding Needs" (the raise, runway and the milestones it buys). Every number must come from the FINANCIAL MODEL figures provided.`,
   pitch: `Cover, as "## " sub-sections in this order, adapted to the client's industry and stage: Mission & Vision; About Us; Problem & Solution; Target Customers; Market Opportunity; Competitors; Business Model; Marketing Strategy; Cost Analysis; Profit Analysis; Milestones (traction if the brief shows it, otherwise the validation-to-launch roadmap — never invented traction); Funding. For each, give the slide's headline message, the proof points and exact numbers to lead with, and what an investor will challenge — the client also receives a companion PowerPoint deck built on the same structure and figures.`,
-  execbrief: `Cover, at minimum: a synthesis of every prior milestone into the 3-5 decisions that matter most, each with its supporting evidence, so a time-constrained reader gets the whole strategy without reading the underlying reports.`,
+  execbrief: `Cover, at minimum: a synthesis of every prior milestone into the 3-5 decisions that matter most, each with its supporting evidence, so a time-constrained reader gets the whole strategy without reading the underlying reports. The ACTION_ROADMAP section carries the sequenced plan — do not repeat it here.`,
 };
 
 const REPORT_FORMAT_RULES = `Formatting rules for the content inside each section — follow these exactly, they map directly to a renderer that builds proper headings, bullet lists and tables from them:
@@ -98,7 +98,18 @@ const REPORT_FORMAT_RULES = `Formatting rules for the content inside each sectio
 
 const REPORT_SYSTEM = SENIOR_VOICE + ` Respond with ONLY the formatted text report. No JSON. Use ---SECTION--- as separators between the sections listed in the prompt. Be comprehensive and detailed — this report should be long and substantive, not a summary.\n\n${REPORT_FORMAT_RULES}\n\n${CITATION_RULES}`;
 
-const STANDARD_SECTIONS = (milestoneName, focus) => `TITLE: ${milestoneName}
+// Phased plans end in this table; the app draws it as a visual timeline on screen and in
+// the PDF, so the column names must stay exactly as written.
+const ROADMAP_TABLE_RULE = `a markdown table with exactly these columns: Phase | Timeline | Key Actions | Owner | Success Measure — one row per phase, Key Actions as 2-3 short actions separated by "; ", Timeline like "0-30 days" or "Q1 2027"`;
+
+// Written last so it can summarise everything above it; shown first, on screen and in the PDF.
+const REPORT_SUMMARY_SECTION = `---SECTION---
+REPORT_SUMMARY: [Write this LAST, after the whole report above. 180-280 words summarising THIS ENTIRE report for the on-screen overview — not a copy or trim of the Executive Summary, and not just its opening. Exactly this format:
+BOTTOM LINE: one or two decisive sentences — the overall conclusion of the report.
+- **Theme:** one-sentence takeaway with the key number or name (5-7 bullets that together cover every section of the report, in report order)
+NEXT STEP: the single most important action the client should take now.]`;
+
+const STANDARD_SECTIONS = (milestoneName, focus, key) => `TITLE: ${milestoneName}
 ---SECTION---
 EXECUTIVE_SUMMARY: [700-1000 words — hard cap, do not exceed 1000 words, content beyond that will be cut off. This must stand alone as a complete summary of the whole report — it is what the client reads on-screen before ever opening the full document, so it needs to carry the real substance, not just tease it. Cover: the headline conclusions and why they matter to this client specifically; the 3-4 most important findings from the analysis; and the top decisive recommendation(s). Use "## " subsections to organize it (e.g. "## Headline Conclusions", "## Key Findings At A Glance", "## Top Recommendation") rather than one long block of prose.]
 ---SECTION---
@@ -110,11 +121,14 @@ DETAILED_ANALYSIS: [1800-2400 words. The core analytical work for this milestone
 ---SECTION---
 RECOMMENDATIONS: [1000-1200 words. Structure as 8-10 "### " headed recommendations, each followed by a paragraph covering the rationale, expected impact, and concrete next step.]
 ---SECTION---
-IMPLEMENTATION_ROADMAP: [600-800 words. Use "## " subsections for sequenced phases (e.g. "Phase 1: 0-30 Days"), each opened with a paragraph and followed by "- " bullets for the concrete actions in that phase.]
+${key === 'execbrief'
+  ? `ACTION_ROADMAP: [500-700 words. The clear, sequenced roadmap of actions the client must take, drawing on every prior milestone. Open with one paragraph on the logic of the sequence, then ${ROADMAP_TABLE_RULE}, with 5-6 phases running from "Now (0-30 days)" to "12-24 months". Then a "## " subsection per phase explaining why it comes in that order and what must be true before moving on.]`
+  : `IMPLEMENTATION_ROADMAP: [600-800 words. Use "## " subsections for sequenced phases (e.g. "Phase 1: 0-30 Days"), each opened with a paragraph and followed by "- " bullets for the concrete actions in that phase. End the section with a sentence introducing the plan at a glance, then ${ROADMAP_TABLE_RULE}, with one row per phase above.]`}
 ---SECTION---
 RISKS_AND_MITIGATIONS: [600-800 words. Structure as 4-6 "### " headed risks, each followed by a paragraph covering the risk and its mitigation.]
 ---SECTION---
-METRICS: [400-500 words. Structure as 5-7 "### " headed KPIs, each followed by a short paragraph giving the target range and why it matters.]`;
+METRICS: [400-500 words. Structure as 5-7 "### " headed KPIs, each followed by a short paragraph giving the target range and why it matters.]
+${REPORT_SUMMARY_SECTION}`;
 
 // Mirrors the structure of an investor-grade business plan: a cover sheet of headline
 // metrics, then 13 numbered sections with tables where the content is tabular. Financial
@@ -156,7 +170,8 @@ KEY_MILESTONES: [400-600 words. A markdown table with columns: Timing | Mileston
 ---SECTION---
 RISK_ANALYSIS: [500-700 words. A markdown table with columns: Risk | Likelihood | Impact | Mitigation (5-7 rows), followed by prose on the two risks that matter most.]
 ---SECTION---
-STRATEGIC_DECISIONS: [300-500 words. The 3-5 decisions leadership must make now, each as a "### " heading followed by a paragraph.]`;
+STRATEGIC_DECISIONS: [300-500 words. The 3-5 decisions leadership must make now, each as a "### " heading followed by a paragraph.]
+${REPORT_SUMMARY_SECTION}`;
 
 function notesBlock(notes) {
   return typeof notes === 'string' && notes.trim()
@@ -164,8 +179,13 @@ function notesBlock(notes) {
     : '';
 }
 
+function additionalLine(additional) {
+  const text = typeof additional === 'string' ? additional.trim().slice(0, 4000) : '';
+  return text ? ` Additional context from the client: ${text}` : '';
+}
+
 function briefLine(intake, businessName) {
-  return `${businessName ? `Business name: ${businessName}. ` : ''}Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.`;
+  return `${businessName ? `Business name: ${businessName}. ` : ''}Client brief: ${intake.brief}. Industry: ${intake.industry}. Stage: ${intake.stage}. Market: ${intake.market}. Goal: ${intake.goal}.${additionalLine(intake.additional)}`;
 }
 
 // The first block (client + scope + verified fact base) is identical for every milestone of
@@ -244,7 +264,7 @@ app.post('/api/log-error', (req, res) => {
 // Generate SOW (initial)
 app.post('/api/generate-sow', async (req, res) => {
   try {
-    const { brief, industry, stage, market, goal } = req.body;
+    const { brief, industry, stage, market, goal, additional } = req.body;
 
     if (!brief?.trim() || !industry || !stage || !market || !goal) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -255,7 +275,7 @@ app.post('/api/generate-sow', async (req, res) => {
     const prompt = `A client filled our discovery intake. Design their engagement scope.
 
 CLIENT BRIEF (their own words): "${brief}"
-Industry: ${industry} | Stage: ${stage} | Target market: ${market} | Primary goal: ${goal}
+Industry: ${industry} | Stage: ${stage} | Target market: ${market} | Primary goal: ${goal}${additionalLine(additional)}
 
 Available milestones:
 ${catalog}
@@ -422,7 +442,7 @@ app.post('/api/generate-milestone-report', async (req, res) => {
     const isBizPlan = milestoneKey === 'bizplan';
     const focus = MILESTONE_FOCUS[milestoneKey] || `Cover the core analytical work this milestone promises, in full depth, organized into clearly labeled sub-sections.`;
 
-    const sections = isBizPlan ? BUSINESS_PLAN_SECTIONS(ctx.businessName) : STANDARD_SECTIONS(milestoneName, focus);
+    const sections = isBizPlan ? BUSINESS_PLAN_SECTIONS(ctx.businessName) : STANDARD_SECTIONS(milestoneName, focus, milestoneKey);
     const lengthTarget = isBizPlan
       ? `This is the client's investor-ready business plan — it should read like a 20-25 page plan an experienced founder would hand to a seed investor. Together the sections should total roughly 7,000-9,000 words.`
       : `It should read like a 15-20 page strategy document, not a summary. Together the sections should total roughly 7,500-10,000 words.`;
@@ -434,7 +454,7 @@ Respond with ONLY these sections separated by ---SECTION---. Follow the target l
 ${sections}`;
 
     const result = await runClaude(client, {
-      maxTokens: isBizPlan ? 20000 : 16000,
+      maxTokens: isBizPlan ? 21000 : 17000,
       system: REPORT_SYSTEM,
       messages: [{ role: "user", content: contextBlocks(ctx, instructions) }],
     });
@@ -717,7 +737,13 @@ function sanitizeDeck(raw) {
         out.rows = list(sl.rows, 7).map(r => list(r, out.columns.length).map(c => s(String(c ?? ''), 70)));
         break;
       case 'chart': out.chart = DECK_CHARTS.has(sl.chart) ? sl.chart : 'arr'; out.takeaway = s(sl.takeaway, 200); break;
-      case 'unitEconomics': case 'marketSize': case 'costAnalysis': out.takeaway = s(sl.takeaway, 200); break;
+      case 'marketSize':
+        out.takeaway = s(sl.takeaway, 200);
+        out.tamBasis = s(sl.tamBasis, 140);
+        out.samBasis = s(sl.samBasis, 140);
+        out.somBasis = s(sl.somBasis, 140);
+        break;
+      case 'unitEconomics': case 'costAnalysis': out.takeaway = s(sl.takeaway, 200); break;
       case 'ask':
         out.useOfFunds = list(sl.useOfFunds, 6).map(u => ({ label: s(u?.label, 50), pct: Math.max(0, Math.min(100, Number(u?.pct) || 0)) })).filter(u => u.label);
         out.milestones = list(sl.milestones, 5).map(m => s(m, 140)).filter(Boolean);
@@ -726,6 +752,12 @@ function sanitizeDeck(raw) {
     }
     return out;
   }).filter(Boolean);
+  // Every deck carries the TAM / SAM / SOM slide, right after the customer story.
+  if (slides.length && !slides.some(sl => sl.type === 'marketSize')) {
+    const after = ['targetCustomers', 'problemSolution', 'about', 'title']
+      .map(t => slides.findIndex(sl => sl.type === t)).find(i => i !== -1);
+    slides.splice((after ?? 0) + 1, 0, { type: 'marketSize', title: 'Market Opportunity: TAM, SAM and SOM', takeaway: '' });
+  }
   return { companyName: s(raw?.companyName, 60), tagline: s(raw?.tagline, 90), slides };
 }
 
@@ -771,7 +803,7 @@ Slide object types — use only these:
 - {"type": "about", "title": "About Us: ...", "summary": "2-3 sentences on who we are and what we have built so far", "facts": [{"label": "Founded", "value": "..."}, {"label": "Stage", "value": "..."}, {"label": "Headquarters", "value": "..."}, {"label": "Team", "value": "..."}, {"label": "Focus market", "value": "..."}]}  (4-6 facts, only ones the brief supports or that are clearly plans)
 - {"type": "problemSolution", "title": "...", "problems": [{"headline": "short", "detail": "one sentence with a number"}], "solutions": [{"headline": "short", "detail": "one sentence: how we solve the matching problem"}]}  (2-3 of each, in matching order)
 - {"type": "targetCustomers", "title": "...", "segments": [{"name": "segment", "profile": "who they are", "pain": "what hurts", "size": "how many / how big"}], "beachhead": "which segment we win first and why"}  (2-4 segments)
-- {"type": "marketSize", "title": "...", "takeaway": "one sentence"}  (TAM/SAM/SOM drawn automatically from the model)
+- {"type": "marketSize", "title": "...", "tamBasis": "what the TAM counts, one line", "samBasis": "the slice we can serve, one line", "somBasis": "what we can realistically win, one line", "takeaway": "one sentence"}  (TAM/SAM/SOM values drawn automatically from the model — never write the numbers yourself)
 - {"type": "competitors", "title": "...", "competitors": [{"name": "...", "positioning": "...", "pricing": "...", "weakness": "the gap we exploit"}], "advantage": "our defensible edge in one sentence"}  (3-6 competitors, verified ones first)
 - {"type": "cards", "title": "...", "cards": [{"label": "...", "text": "2 sentences max"}]}  (2-4 cards)
 - {"type": "marketing", "title": "Marketing Strategy: ...", "channels": [{"channel": "...", "tactic": "what exactly we do there", "kpi": "how we measure it"}], "callout": "the one-line go-to-market thesis"}  (3-5 channels)
@@ -792,7 +824,7 @@ Required running order — every client gets these, adapted to their industry an
 3. "about" — About Us
 4. "problemSolution" — Problem & Solution
 5. "targetCustomers" — Target Customers
-6. "marketSize" — Market Opportunity
+6. "marketSize" — Market Opportunity (TAM, SAM, SOM — mandatory in every deck)
 7. "competitors" — Competitors
 8. "cards" — Business Model: how we make money (revenue streams, pricing, why customers pay), consistent with the model's ACV
 9. "marketing" — Marketing Strategy
