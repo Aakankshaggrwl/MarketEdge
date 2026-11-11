@@ -101,7 +101,7 @@ test('full engagement: consent, research, chained milestones, plan, deck and str
 
   // Strategy Book + follow-up booking on the completion screen.
   await sidebarStep(page, 'Strategy Book').click();
-  await expect(page.getByRole('button', { name: /Book Follow-up Call/ })).toBeVisible();
+  await expect(page.locator('.expert-card').getByRole('button', { name: /Connect to a Strategy Expert/ })).toBeVisible();
   const [book] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Download Strategy Book \(5 milestones\)/ }).click()]);
   expect(book.suggestedFilename()).toBe('Test-Co-Strategy-Book.pdf');
   expect((await readDownload(book)).length).toBeGreaterThan(10_000);
@@ -180,7 +180,15 @@ test('legal pages are linked from the app', async ({ page }) => {
 test('landing page explains the company and shows the login with access details', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.topbar .brand')).toBeVisible();
-  await expect(page.getByRole('heading', { name: /delivered in hours/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Board-ready strategy deliverables, in hours/ })).toBeVisible();
+  await expect(page.locator('.lp-stats')).toContainText('more than 12 years of industry experience');
+  await expect(page.locator('.lp-stats')).toContainText('500+');
+  await expect(page.locator('.lp-stats')).toContainText('PDF, Excel and PowerPoint');
+  await expect(page.locator('.lp-stats')).toContainText('scope of work tailored to every business');
+  await expect(page.locator('.lp-stats')).not.toContainText('Strategy milestones');
+  await expect(page.locator('#custom')).toContainText('Not one formula for all');
+  await expect(page.locator('#deliverables')).toContainText('ready to download');
+  await expect(page.locator('#expert')).toContainText('in two clicks');
   await expect(page.locator('#about')).toContainText('About MarketEdge');
   await expect(page.locator('#deliverables .lp-card')).toHaveCount(9);
   await expect(page.locator('.demo-access')).toContainText('demo@marketedge.com');
@@ -272,4 +280,30 @@ test('the executive brief shows its action roadmap as a visual timeline', async 
   await expect(page.locator('.roadmap-phase').first().locator('.roadmap-actions li')).toHaveCount(2);
   const [pdf] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Download Full Report/ }).click()]);
   expect((await readDownload(pdf)).subarray(0, 4).toString()).toBe('%PDF');
+});
+
+test('every milestone offers Connect to a Strategy Expert, which opens the booking link once configured', async ({ page }) => {
+  await mockApi(page);
+  await startEngagement(page, 'Expert Co');
+  await page.locator('.consent input[type="checkbox"]').check();
+  await page.getByRole('button', { name: /Generate SOW/ }).click();
+  await page.getByRole('button', { name: /Approve SOW/ }).click();
+  await page.getByRole('button', { name: /Continue to Milestones/ }).click();
+  for (const name of ['Customer Deep Dive', 'Beachhead Strategy', 'Pitch Deck']) {
+    await sidebarStep(page, name).click();
+    await expect(page.locator('.page-header h1')).toHaveText(name);
+    await expect(page.locator('.expert-card')).toContainText(`Want an expert view on your ${name}?`);
+  }
+  await page.context().route('https://cal.example.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<p>booking</p>' }));
+  const [popup] = await Promise.all([page.waitForEvent('popup'), page.locator('.expert-card .expert-btn').click()]);
+  await popup.waitForLoadState();
+  expect(popup.url()).toContain('cal.example.com/marketedge');
+});
+
+test('without a booking link the expert button says booking opens soon', async ({ page }) => {
+  await mockApi(page);
+  await page.route('**/api/config', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
+  await page.goto('/');
+  await page.locator('#expert .expert-btn').click();
+  await expect(page.locator('#expert .expert-soon')).toContainText('Expert booking opens soon');
 });
