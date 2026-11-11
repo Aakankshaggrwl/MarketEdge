@@ -667,6 +667,26 @@
     .lp-footer { max-width: 1180px; margin: 0 auto; padding: 28px 40px 40px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
     .lp-footer a { color: #34465A; margin-left: 16px; }
 
+    .lp-grid-4 { grid-template-columns: repeat(4, 1fr); }
+    .lp-expert { display: flex; align-items: center; justify-content: space-between; gap: 32px; background: #fff; border: 1px solid var(--line); border-left: 5px solid var(--gold); border-radius: 16px; padding: 36px 40px; box-shadow: 0 10px 30px rgba(16,42,67,0.06); }
+    .lp-expert h2 { margin-bottom: 10px; }
+    .lp-expert-steps { margin: 16px 0 0 20px; color: #34465A; font-size: 15px; line-height: 1.9; }
+    .lp-expert .expert-btn-wrap { flex-shrink: 0; max-width: 300px; }
+    .lp-hero .btn-outline-light, .lp-cta .btn-outline-light { background: transparent; border: 1px solid rgba(255,255,255,0.35); color: #fff; }
+    .lp-hero .btn-outline-light:hover, .lp-cta .btn-outline-light:hover { background: rgba(255,255,255,0.08); }
+
+    /* ============ EXPERT CONNECT ============ */
+    .expert-btn-wrap { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+    .expert-btn { display: inline-flex; align-items: center; gap: 8px; }
+    .expert-soon { font-size: 12.5px; line-height: 1.45; color: #6B4E00; background: #FFF6DD; border: 1px solid #F1DFA6; border-radius: 8px; padding: 6px 10px; max-width: 320px; }
+    .expert-soon.dark { color: #FDE9A8; background: rgba(201,162,39,0.14); border-color: rgba(201,162,39,0.4); }
+    .expert-card { display: flex; align-items: center; gap: 18px; background: linear-gradient(135deg, #FFFBEF 0%, #FFF6DD 100%); border: 1px solid #F1DFA6; border-radius: 14px; padding: 20px 22px; margin: 26px 0 8px; }
+    .expert-card-icon { width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--gold); color: var(--navy); }
+    .expert-card-text { flex: 1; }
+    .expert-card h3 { font-family: var(--font-heading); font-size: 17px; color: var(--navy); margin-bottom: 4px; }
+    .expert-card p { font-size: 14px; color: #4A3B00; line-height: 1.5; }
+    .expert-card .expert-btn { margin: 0; }
+
     /* ============ DASHBOARD ============ */
     .db { min-height: 100vh; background: var(--bg); }
     .db-hero { background: linear-gradient(120deg, #0E2539 0%, #102A43 55%, #1F4E79 100%); color: #fff; }
@@ -774,7 +794,8 @@
       .lp-section h2 { font-size: 28px; }
       .lp-stats { grid-template-columns: 1fr 1fr; margin: -28px 16px 0; }
       .lp-stat:nth-child(2) { border-right: none; }
-      .lp-steps, .lp-grid, .lp-pillars { grid-template-columns: 1fr; }
+      .lp-steps, .lp-grid, .lp-pillars, .lp-grid-4 { grid-template-columns: 1fr; }
+      .lp-expert, .expert-card { flex-direction: column; align-items: flex-start; padding: 24px; }
       .lp-cta { padding: 28px; }
       .lp-footer { padding: 24px 16px; }
       .db-hero-inner { padding: 32px 16px 76px; }
@@ -1129,6 +1150,37 @@
 
     // ============ VIEWS ============
 
+    // "Connect to a Strategy Expert": opens the booking page set in BOOKING_URL (e.g. a
+    // Calendly link). Until one is configured it tells the client booking opens soon.
+    function ExpertButton({ bookingUrl, className = '', label = 'Connect to a Strategy Expert', dark = false }) {
+      const [soon, setSoon] = useState(false);
+      const open = () => {
+        if (bookingUrl) window.open(bookingUrl, '_blank', 'noopener');
+        else setSoon(true);
+      };
+      return (
+        <span className="expert-btn-wrap">
+          <button type="button" className={`expert-btn ${className}`} onClick={open}>
+            <Icon name="customer" size={17} /> {label}
+          </button>
+          {soon && <span className={`expert-soon ${dark ? 'dark' : ''}`} role="status">Expert booking opens soon — we’ll connect you to a strategy expert here shortly.</span>}
+        </span>
+      );
+    }
+
+    function ExpertCard({ bookingUrl, topic }) {
+      return (
+        <div className="expert-card">
+          <div className="expert-card-icon"><Icon name="customer" size={24} /></div>
+          <div className="expert-card-text">
+            <h3>{topic ? `Want an expert view on your ${topic}?` : 'Want an expert view?'}</h3>
+            <p>Connect to a real strategy expert to pressure-test this work — book a call in just two clicks.</p>
+          </div>
+          <ExpertButton bookingUrl={bookingUrl} />
+        </div>
+      );
+    }
+
     const DEMO_EMAIL = 'demo@marketedge.com';
     const DEMO_PASSWORD = 'Strategy2026';
 
@@ -1157,7 +1209,7 @@
         { title: 'Tell us about your business', text: 'Share your idea, stage, target market and goal in a short intake — type it or dictate it.' },
         { title: 'Agree your scope', text: 'We propose the milestones your business actually needs. Ask questions or change it before you approve.' },
         { title: 'We research your market', text: 'Live web research gathers market sizes, competitors and benchmarks, each tied to a real source.' },
-        { title: 'Receive your strategy', text: 'Board-ready reports, a formula-linked financial model, a business plan and an investor pitch deck.' },
+        { title: 'Download your strategy — in hours', text: 'Board-ready PDF reports, Excel financial models and a PowerPoint pitch deck, ready to download, share and present.' },
       ];
       const formats = {
         competitor: ['PDF', 'Excel'], financial: ['PDF', 'Excel model'], pitch: ['PDF', 'PowerPoint'],
@@ -1170,6 +1222,7 @@
             <nav>
               <a href="#how" onClick={scrollTo('how')}>How it works</a>
               <a href="#deliverables" onClick={scrollTo('deliverables')}>Deliverables</a>
+              <a href="#expert" onClick={scrollTo('expert')}>Talk to an expert</a>
               <a href="#about" onClick={scrollTo('about')}>About us</a>
               <button className="btn-ghost" style={{ margin: 0 }} onClick={goToLogin}>Client login</button>
             </nav>
@@ -1179,19 +1232,21 @@
             <div className="lp-hero-inner">
               <div>
                 <div className="lp-eyebrow">AI-native strategy consulting</div>
-                <h1>Senior-partner strategy, <span className="accent">delivered in hours</span> — not months.</h1>
+                <h1>Board-ready strategy deliverables, <span className="accent">in hours</span> — not months.</h1>
                 <p className="lead">
-                  MarketEdge turns your business brief into a complete, evidence-backed growth strategy: customer and competitor analysis,
-                  market entry plan, a 5-year financial model, an investor-ready business plan and pitch deck.
+                  Share your business brief and download a complete strategy built for <em>your</em> business — customer and competitor
+                  analysis, market entry plan, a 5-year financial model, an investor-ready business plan and pitch deck — as PDF, Excel and
+                  PowerPoint files, in hours. Need a human view? Connect to a real strategy expert in just two clicks.
                 </p>
                 <div className="cta-row">
                   <button className="secondary btn-lg" onClick={goToLogin}>Log in to your portal</button>
-                  <button className="btn-outline-light btn-lg" onClick={scrollTo('deliverables')}>See what you receive</button>
+                  <ExpertButton bookingUrl={bookingUrl} className="btn-outline-light btn-lg" dark />
                 </div>
                 <div className="proof">
-                  <span>Every figure sourced or flagged</span>
-                  <span>One model behind every number</span>
-                  <span>PDF, Excel &amp; PowerPoint</span>
+                  <span>Deliverables in hours</span>
+                  <span>Every file downloadable</span>
+                  <span>Customised for each business</span>
+                  <span>Expert call in 2 clicks</span>
                 </div>
               </div>
 
@@ -1214,11 +1269,28 @@
           </section>
 
           <div className="lp-stats">
-            <div className="lp-stat"><div className="v">9</div><div className="l">Strategy milestones, from customer insight to investor pitch</div></div>
-            <div className="lp-stat"><div className="v">Live</div><div className="l">Web research with every source cited as [S1], [S2]…</div></div>
-            <div className="lp-stat"><div className="v">5-year</div><div className="l">Formula-linked financial model you can edit in Excel</div></div>
-            <div className="lp-stat"><div className="v">3 formats</div><div className="l">Board-ready PDF reports, Excel workbooks and PowerPoint</div></div>
+            <div className="lp-stat"><div className="v">12+ years</div><div className="l">Created with industry experts who each have more than 12 years of industry experience</div></div>
+            <div className="lp-stat"><div className="v">3 formats</div><div className="l">Board-ready documents to download as PDF, Excel and PowerPoint</div></div>
+            <div className="lp-stat"><div className="v">500+</div><div className="l">Real strategy projects behind our AI training</div></div>
+            <div className="lp-stat"><div className="v">Custom SOW</div><div className="l">A scope of work tailored to every business and its needs</div></div>
           </div>
+
+          <section className="lp-section" id="custom">
+            <div className="lp-section-head">
+              <div className="lp-kicker">Not one formula for all</div>
+              <h2>Built around your business — never a template</h2>
+              <p className="section-lead">
+                No two businesses get the same strategy. Your scope, research, numbers and recommendations are all shaped by your brief,
+                your industry, your stage and your market.
+              </p>
+            </div>
+            <div className="lp-grid lp-grid-4">
+              <div className="lp-card"><div className="ic"><Icon name="sow" size={22} /></div><h3>Your scope</h3><p>A customised scope of work picks only the milestones your business needs, in the order it needs them.</p></div>
+              <div className="lp-card"><div className="ic"><Icon name="research" size={22} /></div><h3>Your market</h3><p>Live research on your industry and geography: your market size, your competitors, your benchmarks.</p></div>
+              <div className="lp-card"><div className="ic"><Icon name="financial" size={22} /></div><h3>Your numbers</h3><p>A financial model built from your pricing, customers, team and costs — not generic averages.</p></div>
+              <div className="lp-card"><div className="ic"><Icon name="edit" size={22} /></div><h3>Your feedback</h3><p>Edit your intake, question the scope and regenerate any deliverable with your own direction.</p></div>
+            </div>
+          </section>
 
           <section className="lp-section" id="how">
             <div className="lp-section-head">
@@ -1241,8 +1313,8 @@
             <section className="lp-section" id="deliverables">
               <div className="lp-section-head">
                 <div className="lp-kicker">Deliverables</div>
-                <h2>Everything a founder, board or investor expects</h2>
-                <p className="section-lead">Each milestone is a full report with a summary, contents and cited sources — and builds on the ones before it.</p>
+                <h2>Everything a founder, board or investor expects — ready to download</h2>
+                <p className="section-lead">Each milestone is a full report with a summary, contents and cited sources, built on the ones before it. Every deliverable downloads as a file you own — PDF reports, Excel workbooks and a PowerPoint pitch deck — ready to share with your board or investors.</p>
               </div>
               <div className="lp-grid">
                 {MILESTONE_CATALOG.map(m => (
@@ -1250,12 +1322,30 @@
                     <div className="ic"><Icon name={MILESTONE_META[m.key].icon} size={22} /></div>
                     <h3>{m.name}</h3>
                     <p>{MILESTONE_META[m.key].blurb}.</p>
-                    <div className="formats">{(formats[m.key] || ['PDF']).map(f => <span key={f}>{f}</span>)}</div>
+                    <div className="formats">{(formats[m.key] || ['PDF']).map(f => <span key={f}>⬇ {f}</span>)}</div>
                   </div>
                 ))}
               </div>
             </section>
           </div>
+
+          <section className="lp-section" id="expert" style={{ paddingBottom: 0 }}>
+            <div className="lp-expert">
+              <div>
+                <div className="lp-kicker">Human expertise, when you want it</div>
+                <h2>Connect to a real strategy expert — in two clicks</h2>
+                <p className="section-lead">
+                  Want to pressure-test a recommendation, prepare for an investor meeting or agree your next steps? Book a call with a
+                  strategy expert straight from the portal, on any milestone.
+                </p>
+                <ol className="lp-expert-steps">
+                  <li><strong>Click</strong> “Connect to a Strategy Expert”</li>
+                  <li><strong>Pick</strong> a time that suits you</li>
+                </ol>
+              </div>
+              <ExpertButton bookingUrl={bookingUrl} className="secondary btn-lg" />
+            </div>
+          </section>
 
           <section className="lp-section" id="about">
             <div className="lp-section-head">
@@ -1268,7 +1358,7 @@
               </p>
             </div>
             <div className="lp-pillars">
-              <div className="lp-pillar"><div className="bar" /><h3>Evidence first</h3><p>Every market figure links to the web source it came from. Anything we could not verify is clearly marked as an estimate.</p></div>
+              <div className="lp-pillar"><div className="bar" /><h3>Expert-built, evidence-first</h3><p>Designed with industry experts with 12+ years of experience. Every market figure links to its web source; anything we could not verify is marked as an estimate.</p></div>
               <div className="lp-pillar"><div className="bar" /><h3>One set of numbers</h3><p>Your business plan, pitch deck and executive brief all quote the same formula-linked financial model — no contradictions.</p></div>
               <div className="lp-pillar"><div className="bar" /><h3>You stay in control</h3><p>Change your intake, question the scope, and regenerate any milestone with your own feedback — by typing or by voice.</p></div>
             </div>
@@ -1278,11 +1368,11 @@
             <div className="lp-cta">
               <div>
                 <h2>Ready to build your strategy?</h2>
-                <p>Log in to start a new engagement or pick up where you left off.</p>
+                <p>Log in to get your board-ready deliverables in hours, or talk to a strategy expert first.</p>
               </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                 <button className="secondary btn-lg" onClick={goToLogin}>Client login</button>
-                {bookingUrl && <button className="btn-outline-light btn-lg" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.35)' }} onClick={() => window.open(bookingUrl, '_blank', 'noopener')}>Book a call</button>}
+                <ExpertButton bookingUrl={bookingUrl} className="btn-outline-light btn-lg" dark />
               </div>
             </div>
           </section>
@@ -4765,7 +4855,7 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
       deck: 'Drafting the pitch deck…',
     };
 
-    function MilestoneStep({ milestone, profile, onCacheUpdate, onUsage, onRunResearch, onNext, onPrev, isFirst, isLast }) {
+    function MilestoneStep({ milestone, profile, bookingUrl, onCacheUpdate, onUsage, onRunResearch, onNext, onPrev, isFirst, isLast }) {
       const { sow, intake } = profile;
       const key = milestone.key;
       const sig = signaturesFor(sow, intake, key);
@@ -5034,7 +5124,9 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
             </>
           )}
 
-          <div style={{ marginTop: '30px', display: 'flex', gap: '12px' }}>
+          <ExpertCard bookingUrl={bookingUrl} topic={milestone.name} />
+
+          <div style={{ marginTop: '22px', display: 'flex', gap: '12px' }}>
             <button onClick={onPrev} disabled={isFirst}>← Previous</button>
             <button className="secondary" onClick={onNext}>
               {isLast ? '✅ Complete' : 'Next →'}
@@ -5088,13 +5180,7 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
             </button>
           </div>
 
-          {bookingUrl && (
-            <div className="card">
-              <h3 style={{ marginBottom: '8px' }}>Talk it through</h3>
-              <p style={{ color: '#555' }}>Book a follow-up call to walk through the strategy and next steps.</p>
-              <button style={{ marginTop: '12px' }} onClick={() => window.open(bookingUrl, '_blank', 'noopener')}>📅 Book Follow-up Call</button>
-            </div>
-          )}
+          <ExpertCard bookingUrl={bookingUrl} topic="strategy" />
 
         </div>
       );
@@ -5352,6 +5438,7 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
                   key={currentMilestone.key}
                   milestone={currentMilestone}
                   profile={profile}
+                  bookingUrl={config.bookingUrl}
                   onCacheUpdate={handleCacheUpdate}
                   onUsage={recordUsage}
                   onRunResearch={() => handleUpdateProfile({ stage: 'research' })}
