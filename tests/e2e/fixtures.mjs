@@ -11,7 +11,7 @@ const CDN_LIBS = {
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js': 'node_modules/react-dom/umd/react-dom.production.min.js',
   'https://unpkg.com/@babel/standalone/babel.min.js': 'node_modules/@babel/standalone/babel.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js': 'node_modules/html2pdf.js/dist/html2pdf.bundle.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js': 'node_modules/xlsx/dist/xlsx.full.min.js',
+  'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js': 'node_modules/xlsx-js-style/dist/xlsx.bundle.js',
   'https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js': 'node_modules/pptxgenjs/dist/pptxgen.bundle.js',
 };
 
@@ -73,11 +73,22 @@ export function reportFor(key, name) {
       ],
     };
   }
+  if (key === 'execbrief') {
+    return {
+      title: name,
+      summary: { bottomLine: 'Win UAE halal processors first, then raise a seed round.', points: ['**Market:** $775M [S1]'], nextStep: 'Sign three pilots.' },
+      sections: [
+        { heading: 'Executive Summary', content: 'Brief summary.' },
+        { heading: 'Action Roadmap', content: 'The plan in sequence.\n\n| Phase | Timeline | Key Actions | Owner | Success Measure |\n| --- | --- | --- | --- | --- |\n| Validate | 0-30 days | 20 interviews; pricing test | CEO | 5 LOIs |\n| Pilot | 30-90 days | 3 plant pilots; case study | COO | 2 paid pilots |\n| Raise | 3-6 months | Seed round; first hires | CEO | $1.5M closed |' },
+      ],
+    };
+  }
   const extra = key === 'financial'
     ? '\n\n## Market Sizing\n\nSized bottom-up.\n\n[[MARKET_SIZE_TABLE]]\n\n## Five-Year Projections\n\n[[FINANCIAL_PROJECTIONS_TABLE]]'
     : '';
   return {
     title: name,
+    ...(key === 'gap' ? { summary: { bottomLine: 'The **halal traceability** gap is the one to own.', points: ['**Gap:** no halal-native tool [S1]', '**Size:** $120M (est.)'], nextStep: 'Validate with 10 processors.' } } : {}),
     sections: [
       { heading: 'Executive Summary', content: `## Headline Conclusions\n\n${name} summary for this client. The market is worth **$775M** [S1] and growing 34% a year [S1]; churn is roughly 8% (est.).${extra}` },
       { heading: 'Key Findings', content: '### Finding One\n\nA finding.' },
@@ -149,6 +160,7 @@ export const test = base.extend({
   page: async ({ page }, use) => {
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
+    await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => route.abort());
     await page.route(/^https:\/\/(unpkg\.com|cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net)\//, (route) => {
       const local = CDN_LIBS[route.request().url()];
       if (!local) return route.abort();
@@ -165,10 +177,10 @@ export async function startEngagement(page, name = 'Test Co') {
   await page.goto('/');
   await page.fill('input[type="email"]', 'demo@marketedge.com');
   await page.fill('input[type="password"]', 'Strategy2026');
-  await page.click('button:has-text("Login")');
+  await page.click('form.login-card button[type="submit"]');
   await page.fill('#newBusinessName', name);
   await page.click('button:has-text("Create")');
-  await page.fill('textarea', 'We build AI compliance software for GCC food processors.');
+  await page.fill('textarea[aria-label="Business brief"]', 'We build AI compliance software for GCC food processors.');
   await page.click('input[placeholder="Select or type industry"]');
   await page.click('.combo-option:has-text("Manufacturing")');
 }

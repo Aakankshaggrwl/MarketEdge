@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { repairTruncatedJSON, repairInnerQuotes, safeParseJSON } from '../../lib/json.js';
-import { truncateToWordLimit, parseTextReport, parseKeyValueLines } from '../../lib/report.js';
+import { truncateToWordLimit, parseTextReport, parseKeyValueLines, parseReportSummary } from '../../lib/report.js';
 import { addApiUsage, emptyUsage, usageCostUSD, finalizeUsage } from '../../lib/cost.js';
 import { normalizeUrl, collectSearchSources, buildResearch, sanitizeResearch, formatFactBase } from '../../lib/research.js';
 import { sanitizeFinancialSummary, formatFinancialSummary, fmtUSD, sanitizePriorContext } from '../../lib/context.js';
@@ -167,4 +167,17 @@ test('finalText returns only the answer written after the last search', () => {
   ];
   assert.equal(finalText(blocks), '{"a":1}');
   assert.equal(finalText([{ type: 'text', text: 'plain' }]), 'plain');
+});
+
+test('parseReportSummary reads bottom line, takeaways and next step, and tolerates loose text', () => {
+  assert.deepEqual(parseReportSummary('**BOTTOM LINE:** Win the UAE first.\n- **A:** one\n* **B:** two\n**NEXT STEP:** Call 5 plants.'),
+    { bottomLine: 'Win the UAE first.', points: ['**A:** one', '**B:** two'], nextStep: 'Call 5 plants.' });
+  assert.equal(parseReportSummary('Just a paragraph of summary.').bottomLine, 'Just a paragraph of summary.');
+});
+
+test('parseTextReport keeps the report summary out of the numbered sections', () => {
+  const r = parseTextReport('TITLE: T\n---SECTION---\nEXECUTIVE_SUMMARY: e\n---SECTION---\nREPORT_SUMMARY: BOTTOM LINE: b', 'F');
+  assert.deepEqual(r.sections.map(s => s.heading), ['Executive Summary']);
+  assert.equal(r.summary.bottomLine, 'b');
+  assert.equal(parseTextReport('TITLE: T\n---SECTION---\nEXECUTIVE_SUMMARY: e', 'F').summary, undefined);
 });
