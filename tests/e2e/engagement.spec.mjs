@@ -332,12 +332,14 @@ test('the sidebar and navigation follow the milestones in this business’s SOW'
   ]);
   await expect(page.locator('.page-header h1')).toHaveText('Competitor Landscape');
   await expect(page.locator('.page-header-kicker')).toHaveText('Milestone 1 of 3');
+  await expect(page.locator('.report-highlight')).toContainText('Competitor Landscape summary');
   expect(calls.find(c => c.endpoint === 'generate-milestone-report').body.milestoneName).toBe('Competitor Landscape');
 
   await page.getByRole('button', { name: 'Next →' }).click();
   await expect(page.locator('.page-header h1')).toHaveText('Financial Analysis');
   await page.getByRole('button', { name: 'Next →' }).click();
   await expect(page.locator('.page-header h1')).toHaveText('Investor Pitch Deck');
+  await expect(page.locator('.report-highlight')).toContainText('Investor Pitch Deck summary');
   await expect(page.getByRole('button', { name: /Complete/ })).toBeVisible();
   // The pitch deck builds on the milestones before it in this engagement.
   const pitch = calls.filter(c => c.endpoint === 'generate-milestone-report' && c.body.milestoneKey === 'pitch').at(-1);
