@@ -1010,6 +1010,24 @@
       );
     }
 
+    // The milestones of THIS engagement: exactly the ones in its scope of work, in the SOW's
+    // order and under the SOW's names. The catalog only supplies icons and descriptions for
+    // the milestone types the app knows how to produce. Falls back to the full catalog only
+    // when there is no usable SOW yet.
+    function engagementMilestones(profile) {
+      const seen = new Set();
+      const fromSow = (profile?.sow?.milestones || [])
+        .map(m => {
+          const base = MILESTONE_CATALOG.find(c => c.key === m?.key);
+          if (!base || seen.has(base.key)) return null;
+          seen.add(base.key);
+          const name = typeof m.name === 'string' && m.name.trim() ? m.name.trim() : base.name;
+          return { ...base, name, rationale: m.rationale || '' };
+        })
+        .filter(Boolean);
+      return fromSow.length ? fromSow : MILESTONE_CATALOG;
+    }
+
     // ============ COMBO SELECT COMPONENT ============
     function ComboSelect({ value, onChange, options, placeholder }) {
       const [open, setOpen] = useState(false);
@@ -1387,14 +1405,15 @@
 
     // Where an engagement stands, in the client's language.
     function engagementStatus(business) {
-      const done = MILESTONE_CATALOG.filter(m => business.milestoneReports?.[m.key]?.report).length;
-      const total = MILESTONE_CATALOG.length;
+      const milestones = engagementMilestones(business);
+      const done = milestones.filter(m => business.milestoneReports?.[m.key]?.report).length;
+      const total = milestones.length;
       let next;
       if (!business.intake) next = 'Complete your business intake';
       else if (!business.sow || business.stage === 'sow_review') next = 'Review and approve your scope of work';
       else if (business.stage === 'research' && !business.research) next = 'Run market research';
       else if (done === total) next = 'Download your Strategy Book';
-      else next = `Generate ${MILESTONE_CATALOG.find(m => !business.milestoneReports?.[m.key]?.report)?.name}`;
+      else next = `Generate ${milestones.find(m => !business.milestoneReports?.[m.key]?.report)?.name}`;
       return { done, total, pct: Math.round((done / total) * 100), next };
     }
 
@@ -4561,8 +4580,9 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
     // Earlier milestones, in engagement order, reduced to their executive summaries — the
     // context every later milestone is written on top of.
     function priorContextFor(profile, key) {
-      const idx = MILESTONE_CATALOG.findIndex(m => m.key === key);
-      return MILESTONE_CATALOG.slice(0, idx)
+      const milestones = engagementMilestones(profile);
+      const idx = milestones.findIndex(m => m.key === key);
+      return milestones.slice(0, Math.max(0, idx))
         .map(m => ({ name: m.name, report: profile.milestoneReports?.[m.key]?.report }))
         .filter(x => x.report)
         .map(x => ({ name: x.name, summary: executiveSummaryOf(x.report) }));
@@ -4570,9 +4590,10 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
 
     // The most recent time any input this milestone builds on changed.
     function upstreamStampFor(profile, key) {
-      const idx = MILESTONE_CATALOG.findIndex(m => m.key === key);
+      const milestones = engagementMilestones(profile);
+      const idx = milestones.findIndex(m => m.key === key);
       const stamps = [profile.research?.generatedAt || '', profile.intakeUpdatedAt || ''];
-      MILESTONE_CATALOG.slice(0, idx).forEach(m => {
+      milestones.slice(0, Math.max(0, idx)).forEach(m => {
         const at = profile.milestoneReports?.[m.key]?.reportGeneratedAt;
         if (at) stamps.push(at);
       });
@@ -5015,13 +5036,14 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
       const sources = displayReport ? citedSources(displayReport, profile.research) : [];
       const roadmapBlock = key === 'execbrief' && numberedReport ? findRoadmapBlock(numberedReport) : null;
       const upstreamChanged = report && entry.reportContextStamp && upstreamStampFor(profile, key) > entry.reportContextStamp;
-      const milestoneIndex = MILESTONE_CATALOG.findIndex(m => m.key === key);
+      const engagement = engagementMilestones(profile);
+      const milestoneIndex = engagement.findIndex(m => m.key === key);
 
       return (
         <div className="view">
           <PageHeader
             icon={MILESTONE_META[key]?.icon || 'summary'}
-            kicker={`Milestone ${milestoneIndex + 1} of ${MILESTONE_CATALOG.length}`}
+            kicker={`Milestone ${milestoneIndex + 1} of ${engagement.length}`}
             title={milestone.name}
             subtitle={MILESTONE_META[key]?.blurb}
             status={busy ? { text: 'Generating…', pending: true } : displayReport ? { text: 'Report ready' } : null}
@@ -5137,14 +5159,15 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
     }
 
     function CompleteStep({ profile, bookingUrl, onOpenMilestone }) {
-      const generated = MILESTONE_CATALOG.filter(m => profile.milestoneReports?.[m.key]?.report);
+      const milestones = engagementMilestones(profile);
+      const generated = milestones.filter(m => profile.milestoneReports?.[m.key]?.report);
       const financialSummary = useMemo(() => computeFinancialSummary(validModel(profile)), [profile]);
       const [building, setBuilding] = useState(false);
 
       const downloadBook = async () => {
         setBuilding(true);
         try {
-          await generateStrategyBookPDF(profile, MILESTONE_CATALOG, financialSummary);
+          await generateStrategyBookPDF(profile, milestones, financialSummary);
         } catch (e) {
           reportClientError('strategy-book', e);
           alert(`The Strategy Book couldn't be built: ${e.message}`);
@@ -5155,16 +5178,16 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
 
       return (
         <div className="view">
-          <PageHeader icon="complete" tone="gold" kicker={generated.length === MILESTONE_CATALOG.length ? 'Engagement complete' : 'Your deliverables'}
+          <PageHeader icon="complete" tone="gold" kicker={generated.length === milestones.length ? 'Engagement complete' : 'Your deliverables'}
             title="Strategy Book" subtitle="Every milestone in one document, with a contents page and a single list of sources."
-            status={{ text: `${generated.length} of ${MILESTONE_CATALOG.length} milestones`, pending: generated.length < MILESTONE_CATALOG.length }} />
+            status={{ text: `${generated.length} of ${milestones.length} milestones`, pending: generated.length < milestones.length }} />
 
           <div className="card">
             <h3 style={{ marginBottom: '8px' }}>Your Strategy Book</h3>
             <p style={{ color: '#555', marginBottom: '12px' }}>One PDF combining every generated milestone, with a contents page and a single list of sources.</p>
             <table className="complete-table">
               <tbody>
-                {MILESTONE_CATALOG.map((m, i) => {
+                {milestones.map((m, i) => {
                   const done = !!profile.milestoneReports?.[m.key]?.report;
                   return (
                     <tr key={m.key}>
@@ -5217,13 +5240,14 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
         }
       }, []);
 
-      const hasAnyReport = MILESTONE_CATALOG.some(m => profile?.milestoneReports?.[m.key]?.report);
+      const milestones = engagementMilestones(profile);
+      const hasAnyReport = milestones.some(m => profile?.milestoneReports?.[m.key]?.report);
       const pastScope = !!profile && ['research', 'milestones', 'complete'].includes(profile.stage) || !!profile?.research;
       const allSteps = [
         { key: 'intake', label: 'Business Intake', icon: 'intake', completed: !!profile?.intake },
         { key: 'sow_review', label: 'Scope of Work', icon: 'sow', completed: !!profile?.sow && profile?.stage !== 'sow_review', locked: !profile?.sow },
         { key: 'research', label: 'Market Research', icon: 'research', completed: !!profile?.research, locked: !pastScope },
-        ...MILESTONE_CATALOG.map((m, i) => ({
+        ...milestones.map((m, i) => ({
           key: `milestone-${i}`,
           label: m.name,
           icon: MILESTONE_META[m.key].icon,
@@ -5379,8 +5403,9 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
       }
 
       if (view === 'engagement' && profile) {
-        const currentIndex = profile.currentMilestoneIndex || 0;
-        const currentMilestone = MILESTONE_CATALOG[currentIndex];
+        // A revised scope can have fewer milestones than the saved position.
+        const currentIndex = Math.min(profile.currentMilestoneIndex || 0, milestones.length - 1);
+        const currentMilestone = milestones[currentIndex];
         const currentStep = profile.stage === 'intake' ? 'intake'
           : profile.stage === 'sow_review' ? 'sow_review'
           : profile.stage === 'research' ? 'research'
@@ -5443,7 +5468,7 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
                   onUsage={recordUsage}
                   onRunResearch={() => handleUpdateProfile({ stage: 'research' })}
                   onNext={() => {
-                    if (currentIndex >= MILESTONE_CATALOG.length - 1) {
+                    if (currentIndex >= milestones.length - 1) {
                       handleUpdateProfile({ stage: 'complete' });
                     } else {
                       handleUpdateProfile({ currentMilestoneIndex: currentIndex + 1 });
@@ -5455,7 +5480,7 @@ ${buildReportBodyHTML(report, milestone, intake, opts)}
                     }
                   }}
                   isFirst={currentIndex === 0}
-                  isLast={currentIndex >= MILESTONE_CATALOG.length - 1}
+                  isLast={currentIndex >= milestones.length - 1}
                 />
               )}
               {profile.stage === 'complete' && (

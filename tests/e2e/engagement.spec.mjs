@@ -307,3 +307,46 @@ test('without a booking link the expert button says booking opens soon', async (
   await page.locator('#expert .expert-btn').click();
   await expect(page.locator('#expert .expert-soon')).toContainText('Expert booking opens soon');
 });
+
+test('the sidebar and navigation follow the milestones in this business’s SOW', async ({ page }) => {
+  const calls = await mockApi(page, {
+    'generate-sow': (route, body, json) => json(route, 200, { success: true, sow: {
+      engagement_summary: 'A lean, funding-focused scope.',
+      milestones: [
+        { key: 'competitor', name: 'Competitor Landscape', rationale: 'r' },
+        { key: 'financial', name: 'Financial Analysis', rationale: 'r' },
+        { key: 'pitch', name: 'Investor Pitch Deck', rationale: 'r' },
+      ],
+    } }),
+  });
+  await startEngagement(page, 'Lean Co');
+  await page.locator('.consent input[type="checkbox"]').check();
+  await page.getByRole('button', { name: /Generate SOW/ }).click();
+  await page.getByRole('button', { name: /Approve SOW/ }).click();
+  await page.getByRole('button', { name: /Continue to Milestones/ }).click();
+
+  // Exactly the SOW's milestones, in its order and under its names — nothing from the full catalog.
+  await expect(page.locator('.sidebar-step .step-label')).toHaveText([
+    'Business Intake', 'Scope of Work', 'Market Research',
+    'Competitor Landscape', 'Financial Analysis', 'Investor Pitch Deck', 'Strategy Book',
+  ]);
+  await expect(page.locator('.page-header h1')).toHaveText('Competitor Landscape');
+  await expect(page.locator('.page-header-kicker')).toHaveText('Milestone 1 of 3');
+  expect(calls.find(c => c.endpoint === 'generate-milestone-report').body.milestoneName).toBe('Competitor Landscape');
+
+  await page.getByRole('button', { name: 'Next →' }).click();
+  await expect(page.locator('.page-header h1')).toHaveText('Financial Analysis');
+  await page.getByRole('button', { name: 'Next →' }).click();
+  await expect(page.locator('.page-header h1')).toHaveText('Investor Pitch Deck');
+  await expect(page.getByRole('button', { name: /Complete/ })).toBeVisible();
+  // The pitch deck builds on the milestones before it in this engagement.
+  const pitch = calls.filter(c => c.endpoint === 'generate-milestone-report' && c.body.milestoneKey === 'pitch').at(-1);
+  expect(pitch.body.priorContext.map(p => p.name)).toEqual(['Competitor Landscape', 'Financial Analysis']);
+
+  await page.getByRole('button', { name: /Complete/ }).click();
+  await expect(page.locator('.complete-table tr')).toHaveCount(3);
+  await expect(page.locator('.page-header-status')).toHaveText('3 of 3 milestones');
+
+  await page.getByRole('button', { name: /All engagements/ }).click();
+  await expect(page.locator('.db-card.business-card .db-progress-row')).toContainText('3 / 3');
+});
