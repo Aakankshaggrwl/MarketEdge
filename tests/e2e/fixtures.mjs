@@ -122,6 +122,13 @@ const DECK = {
   ],
 };
 
+// A scope that includes every milestone type, under the names the tests navigate by.
+export const FULL_SOW_MILESTONES = [
+  ['customer', 'Customer Deep Dive'], ['competitor', 'Competitive Intelligence'], ['gap', 'Gap Analysis'],
+  ['beachhead', 'Beachhead Strategy'], ['entry', 'Market Entry Playbook'], ['financial', 'Financial Projections'],
+  ['bizplan', 'Business Plan'], ['pitch', 'Pitch Deck'], ['execbrief', 'Executive Brief'],
+].map(([key, name]) => ({ key, name, rationale: 'Because.' }));
+
 // Mocks every /api call the browser makes and records the request bodies.
 export async function mockApi(page, overrides = {}) {
   const calls = [];
@@ -135,7 +142,7 @@ export async function mockApi(page, overrides = {}) {
     if (overrides[endpoint]) return overrides[endpoint](route, body, json);
     switch (endpoint) {
       case 'generate-sow':
-        return json(route, 200, { success: true, sow: { engagement_summary: 'A focused engagement.', milestones: [{ key: 'customer', name: 'Customer Analysis', rationale: 'Because.' }] }, usage: usage(0.03) });
+        return json(route, 200, { success: true, sow: { engagement_summary: 'A focused engagement.', milestones: FULL_SOW_MILESTONES }, usage: usage(0.03) });
       case 'research':
         return json(route, 200, { success: true, research: RESEARCH, usage: { ...usage(0.25), webSearches: 7 } });
       case 'generate-milestone-report':
